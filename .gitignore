@@ -1,0 +1,22 @@
+# Python & Jupyter checkpoints
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# Ignore heavy raw minute-level CSVs (>20MB to >90MB each)
+data/2018Floor*.csv
+data/2019Floor*.csv
+data/raw_Floor*.csv
+data/clean_Floor*.csv
+data/clean_merged_Floor*.csv
+
+# Track the lightweight summary files
+!data/qn1_hourly_master_for_excel.csv
+!data/qn1_executive_summary_report.xlsx
+!data/chula_academic_calendar_18months.csv
+!data/thai_holidays_18months.csv
+
+# OS specific files
+.DS_Store
+Thumbs.db
