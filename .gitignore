@@ -7,6 +7,9 @@ __pycache__/
 # Ignore all data files except the 6.4 MB hourly master dataset
 data/*
 !data/qn1_hourly_master_for_excel.csv
+!data/qn1_circuit_waste_and_classification.csv
+!data/thai_holidays_18months.csv
+
 
 # OS specific files
 .DS_Store
