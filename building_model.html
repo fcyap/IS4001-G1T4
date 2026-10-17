@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Chamchuri 5 Building | Energy model</title>
+    
+    <link rel="stylesheet" href="/building_model.css">
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="top">
+        <div class="brand">
+          <div class="logo">⌂</div>
+          <div>
+            <div class="eyebrow">Chulalongkorn University</div>
+            <h1>Chamchuri 5 Building</h1>
+            <div class="header-sub">After-hours energy audit · July 2018–December 2019</div>
+          </div>
+        </div>
+      </header>
+
+        <section class="intro">
+          <div>
+            <h2>Building Energy Model</h2>
+            <p>Explore energy use, waste opportunities, and estimated savings across Chamchuri 5’s seven floors.</p>
+          </div>
+          <div class="mode" aria-label="Building color mode">
+            <button class="active" data-mode="classification">Waste status</button>
+            <button data-mode="load">After-hours load</button>
+          </div>
+        </section>
+        <section class="summary" id="summary">
+        </section>
+        <nav class="view-tabs" aria-label="Building sections">
+          <a href="#tab-simulator">Savings Simulator</a>
+          <a href="#tab-building">Building overview</a>
+          <a href="#tab-heatmap">Waste Map</a>
+        </nav>
+
+
+
+        <section class="panel simulator" id="tab-simulator">
+          <div class="panel-head">
+            <div>
+              <div class="sim-title-row">
+                <h3>Savings Simulator</h3>
+                <div class="sim-scope" id="simScope">Scope: whole building</div>
+              </div>
+              <p>Scenarios for circuits labeled preventable waste.</p>
+            </div>
+          </div>
+          <div class="sim-body">
+            <div class="slider-box">
+              <label for="reduction">Curfew capture scenario <strong id="reductionLabel">50%</strong>
+              </label>
+              <input id="reduction" type="range" min="50" max="100" step="25" value="50">
+              <div class="slider-ends">
+                <span>50% · Conservative</span>
+                <span>75% · Moderate</span>
+                <span>100% · Full compliance</span>
+              </div>
+              <p id="simBase" class="sim-base">
+              </p>
+            </div>
+            <div class="sim-results">
+              <div class="sim-result">
+                <span>Estimated energy saved / year</span>
+                <strong id="simEnergy">—</strong>
+              </div>
+              <div class="sim-result">
+                <span>Estimated cost avoided / year · excl. VAT</span>
+                <strong id="simCost">—</strong>
+                <small id="simCostVat">incl. 7% VAT: —</small>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div class="main" id="tab-building">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h3>Chamchuri 5 · floor model</h3>
+                <p>Zones are schematic. Circuit color and load values come from the audit dataset.</p>
+              </div>
+              <div class="legend">
+                <span>
+                  <i style="background:#4389c8">
+                  </i>Preventable waste</span>
+                  <span>
+                    <i style="background:#c95f62">
+                    </i>Critical standby</span>
+                    <span>
+                      <i style="background:#eceee8">
+                      </i>No circuit</span>
+                    </div>
+                  </div>
+                  <div class="floor-row" id="floorButtons">
+                  </div>
+                  <div class="building-wrap">
+                    <div class="building" id="building">
+                    </div>
+                  </div>
+                  <div class="select-hint">Select a floor or zone cell to inspect its circuits.</div>
+                </section>
+                <div class="side-stack">
+                  <aside class="panel">
+                  <div class="panel-head">
+                    <div>
+                      <h3>Floor / zone details</h3>
+                      <p>After-hours begins at 5:00 PM in the audit assumptions.</p>
+                    </div>
+                  </div>
+                  <div id="details" class="detail-empty">Choose a floor or zone on the model to see its audit details.</div>
+                  <div class="disclaimer">This interactive model uses the supplied audit data. It does not receive live meter, occupancy, equipment, or control-system data.</div>
+                  </aside>
+
+                </div>
+              </div>
+
+
+        <section class="panel heat-panel" id="tab-heatmap">
+          <div class="panel-head">
+            <div>
+              <h3>Waste Map</h3>
+              <p>Per-circuit addressable surplus over 18 months, in MWh. Select a cell to filter the Savings Simulator and open its zone in the model.</p>
+            </div>
+            <div class="heat-legend">
+              <span>Lower</span>
+              <i>
+              </i>
+              <span>Higher MWh</span>
+            </div>
+          </div>
+          <div class="heat-wrap">
+            <div class="heat-grid" id="heatMap">
+            </div>
+          </div>
+        </section>
+
+              <footer>
+                <span>Source: qn1_circuit_waste_and_classification.csv</span>
+                <span>Values represent modeled audit estimates, not live telemetry.</span>
+              </footer>
+            </div>
+
+  <script>window.BUILDING_MODEL_DATA = __DATA__;</script>
+  <script src="/building_model.js"></script>
+  </body>
+</html>
