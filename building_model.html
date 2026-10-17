@@ -25,10 +25,6 @@
             <h2>Building Energy Model</h2>
             <p>Explore energy use, waste opportunities, and estimated savings across Chamchuri 5’s seven floors.</p>
           </div>
-          <div class="mode" aria-label="Building color mode">
-            <button class="active" data-mode="classification">Waste status</button>
-            <button data-mode="load">After-hours load</button>
-          </div>
         </section>
         <section class="summary" id="summary">
         </section>
@@ -37,8 +33,14 @@
           <a href="#tab-building">Building overview</a>
           <a href="#tab-heatmap">Waste Map</a>
         </nav>
-
-
+        <section id="scopePicker" class="scope-picker" aria-label="Building and zone filter">
+          <div class="scope-tab-label">Filter by building or floor</div>
+          <div class="scope-tabs" id="floorTabs" role="tablist" aria-label="Building floors"></div>
+          <div id="zoneTabSection" class="zone-tab-section" hidden>
+            <div class="scope-tab-label">Filter by zone</div>
+            <div class="scope-tabs zone-tabs" id="zoneTabs" role="tablist" aria-label="Zones on selected floor"></div>
+          </div>
+        </section>
 
         <section class="panel simulator" id="tab-simulator">
           <div class="panel-head">
@@ -60,6 +62,7 @@
                 <span>75% · Moderate</span>
                 <span>100% · Full compliance</span>
               </div>
+              <p class="sim-help">Applies to the selected building, floor, or zone.</p>
               <p id="simBase" class="sim-base">
               </p>
             </div>
@@ -75,6 +78,22 @@
               </div>
             </div>
           </div>
+          <div class="sim-load-results">
+            <div class="sim-load-stat">
+              <span>Current after-hours mean</span>
+              <strong id="simCurrentLoad">—</strong>
+            </div>
+            <div class="sim-load-stat projected">
+              <span>Projected after-hours mean</span>
+              <strong id="simProjectedLoad">—</strong>
+            </div>
+            <div class="sim-load-stat baseline">
+              <span>Baseline target</span>
+              <strong id="simBaselineLoad">—</strong>
+            </div>
+          </div>
+          <p class="sim-load-note">Load projections include preventable-waste circuits in the selected scope. Critical standby circuits remain unchanged.</p>
+          <p class="sim-controls-note">The capture scenario applies to preventable-waste circuits in the selected scope, using annualized surplus and avoided-cost estimates. Critical standby is excluded.</p>
         </section>
 
         <div class="main" id="tab-building">
@@ -96,7 +115,12 @@
                       </i>No circuit</span>
                     </div>
                   </div>
-                  <div class="floor-row" id="floorButtons">
+                  <div class="model-mode-control">
+                    <span>Model view</span>
+                    <div class="mode" aria-label="Building model display mode">
+                      <button class="active" data-mode="classification">Waste status</button>
+                      <button data-mode="load">After-hours load</button>
+                    </div>
                   </div>
                   <div class="building-wrap">
                     <div class="building" id="building">

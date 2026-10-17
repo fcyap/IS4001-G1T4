@@ -16,12 +16,58 @@ const wasteMapColors = [
 let selectedFloor = null;
 let selectedZone = null;
 let mode = "classification";
+const zoneCaptureRates = Object.fromEntries(
+  floors.flatMap((floor) => zones.map((zone) => [`${floor}_${zone}`, 50])),
+);
 
 const number = (value) => Number(value || 0);
 const money = (value) => `฿${Math.round(value).toLocaleString("en-US")}`;
 const format = (value) => number(value).toLocaleString("en-US", {
   maximumFractionDigits: 2,
 });
+
+function syncScopeTabs() {
+  renderScopeTabs();
+}
+
+function renderScopeTabs() {
+  const floorTabs = document.querySelector("#floorTabs");
+  const floorOptions = [
+    `<button type="button" role="tab" data-floor="all" aria-selected="${selectedFloor === null}">Whole building</button>`,
+    ...floors.map((floor) => `<button type="button" role="tab" data-floor="${floor}" aria-selected="${selectedFloor === floor}">Floor ${floor.replace("Floor", "")}</button>`),
+  ];
+  floorTabs.innerHTML = floorOptions.join("");
+
+  const zoneSection = document.querySelector("#zoneTabSection");
+  zoneSection.hidden = !selectedFloor;
+  if (!selectedFloor) {
+    syncScopeCaptureControl();
+    return;
+  }
+
+  document.querySelector("#zoneTabs").innerHTML = [
+    `<button type="button" role="tab" data-zone="all" aria-selected="${selectedZone === null}">All zones</button>`,
+    ...zones.map((zone) => `<button type="button" role="tab" data-zone="${zone}" aria-selected="${selectedZone === zone}">${zone.toUpperCase()}</button>`),
+  ].join("");
+  syncScopeCaptureControl();
+}
+
+function scopeZoneKeys() {
+  return Object.keys(zoneCaptureRates).filter((key) => {
+    const [floor, zone] = key.split("_");
+    return (!selectedFloor || floor === selectedFloor)
+      && (!selectedZone || zone === selectedZone);
+  });
+}
+
+function syncScopeCaptureControl() {
+  const rates = [...new Set(scopeZoneKeys().map((key) => zoneCaptureRates[key]))];
+  const rate = rates[0] ?? 50;
+  document.querySelector("#reduction").value = rate;
+  document.querySelector("#reductionLabel").textContent = rates.length > 1
+    ? "Mixed"
+    : `${rate}%`;
+}
 
 function wasteMapColor(intensity) {
   const position = intensity * (wasteMapColors.length - 1);
@@ -65,7 +111,6 @@ function renderCircuitChip(floor, zone, type, label) {
   if (!circuit) {
     return `<span class="chip empty" title="${label}: no circuit recorded">${compactLabel} —</span>`;
   }
-
   const classification = circuit.Classification === "Preventable Waste"
     ? "waste"
     : "critical";
@@ -127,22 +172,7 @@ function renderBuilding() {
     ${floorMarkup}
     <div class="building-base"></div>`;
 
-  renderFloorButtons();
   attachFloorClickHandlers();
-}
-
-function renderFloorButtons() {
-  const buttons = document.querySelector("#floorButtons");
-  const allActive = selectedFloor === null ? "active" : "";
-  const floorButtons = floors.map((floor) => {
-    const active = selectedFloor === floor ? "active" : "";
-    const displayNumber = floor.replace("Floor", "");
-    return `<button data-floor="${floor}" class="${active}">Floor ${displayNumber}</button>`;
-  }).join("");
-
-  buttons.innerHTML = `
-    <button data-floor="all" class="${allActive}">All floors</button>
-    ${floorButtons}`;
 }
 
 function attachFloorClickHandlers() {
@@ -167,22 +197,13 @@ function attachFloorClickHandlers() {
         renderDetails(selectedFloor, null);
       }
 
+      syncScopeTabs();
+      renderSummary();
       renderBuilding();
       updateSimulator();
     });
   });
 
-  document.querySelectorAll("#floorButtons button").forEach((button) => {
-    button.addEventListener("click", () => {
-      selectedFloor = button.dataset.floor === "all"
-        ? null
-        : button.dataset.floor;
-      selectedZone = null;
-      renderDetails(selectedFloor, null);
-      renderBuilding();
-      updateSimulator();
-    });
-  });
 }
 
 function renderDetails(floor, zone) {
@@ -261,7 +282,10 @@ function renderWasteMap() {
       mwh: number(circuit?.Surplus_kWh_18M) / 1000,
     };
   }));
-  const maximumMwh = Math.max(...cells.map((cell) => cell.mwh), 0.1);
+  const maximumMwh = Math.max(
+    ...cells.map((cell) => cell.mwh),
+    0.1,
+  );
   const columnHeaders = circuitColumns.map((column) => `
     <div class="heat-head">${column.replace("_", "<br>")}</div>`).join("");
   const floorRows = [...floors].reverse().map((floor) => {
@@ -308,23 +332,43 @@ function updateSimulator() {
     (total, circuit) => total + number(circuit.Annual_Avoided_Cost_THB),
     0,
   );
-  const captureRate = Number(document.querySelector("#reduction").value);
-  const scenarioCost = annualCost * captureRate / 100;
+  const scenario = circuits.reduce((totals, circuit) => {
+    const zone = circuit.Zone_Col.split("_")[0];
+    const captureRate = zoneCaptureRates[`${circuit.Floor}_${zone}`] ?? 50;
+    const currentLoad = number(circuit.Unocc_Mean_kW);
+    const baselineLoad = number(circuit.Baseload_kW);
+    totals.currentLoad += currentLoad;
+    totals.baselineLoad += baselineLoad;
+    totals.projectedLoad += currentLoad - Math.max(0, currentLoad - baselineLoad) * captureRate / 100;
+    totals.energy += number(circuit.Annual_Surplus_kWh) * captureRate / 100;
+    totals.cost += number(circuit.Annual_Avoided_Cost_THB) * captureRate / 100;
+    return totals;
+  }, { energy: 0, cost: 0, currentLoad: 0, projectedLoad: 0, baselineLoad: 0 });
   const scope = selectedFloor
     ? `${selectedFloor.replace("Floor", "Floor ")}${selectedZone ? ` · ${selectedZone.toUpperCase()}` : ""}`
     : "whole building";
 
-  document.querySelector("#reductionLabel").textContent = `${captureRate}%`;
   document.querySelector("#simScope").textContent = `Scope: ${scope}`;
   document.querySelector("#simBase").textContent =
     `Annualized opportunity · scope: ${Math.round(annualEnergy).toLocaleString()} kWh and ${money(annualCost)} excl. VAT`;
   document.querySelector("#simEnergy").textContent =
-    `${Math.round(annualEnergy * captureRate / 100).toLocaleString()} kWh`;
-  document.querySelector("#simCost").textContent = money(scenarioCost);
+    `${Math.round(scenario.energy).toLocaleString()} kWh`;
+  document.querySelector("#simCost").textContent = money(scenario.cost);
   document.querySelector("#simCostVat").textContent =
-    `incl. 7% VAT: ${money(scenarioCost * 1.07)}`;
+    `incl. 7% VAT: ${money(scenario.cost * 1.07)}`;
+  document.querySelector("#simCurrentLoad").textContent = `${format(scenario.currentLoad)} kW`;
+  document.querySelector("#simProjectedLoad").textContent = `${format(scenario.projectedLoad)} kW`;
+  document.querySelector("#simBaselineLoad").textContent = `${format(scenario.baselineLoad)} kW`;
 
+  syncScopeCaptureControl();
   renderWasteMap();
+}
+
+function applyCaptureToScope(event) {
+  const captureRate = Number(event.currentTarget.value);
+  document.querySelector("#reductionLabel").textContent = `${captureRate}%`;
+  for (const key of scopeZoneKeys()) zoneCaptureRates[key] = captureRate;
+  updateSimulator();
 }
 
 function selectFromWasteMap(event) {
@@ -333,6 +377,8 @@ function selectFromWasteMap(event) {
 
   selectedFloor = cell.dataset.floor;
   selectedZone = cell.dataset.zone;
+  syncScopeTabs();
+  renderSummary();
   renderDetails(selectedFloor, selectedZone);
   renderBuilding();
   updateSimulator();
@@ -350,18 +396,35 @@ function setBuildingColorMode(event) {
   renderBuilding();
 }
 
-document.querySelector("#reduction").addEventListener("input", updateSimulator);
+document.querySelector("#reduction").addEventListener("input", applyCaptureToScope);
 document.querySelector("#building").addEventListener("click", () => {
   setTimeout(updateSimulator, 0);
 });
-document.querySelector("#floorButtons").addEventListener("click", () => {
-  setTimeout(updateSimulator, 0);
-});
 document.querySelector("#heatMap").addEventListener("click", selectFromWasteMap);
+document.querySelector("#floorTabs").addEventListener("click", (event) => {
+  const tab = event.target.closest("button[data-floor]");
+  if (!tab) return;
+  selectedFloor = tab.dataset.floor === "all" ? null : tab.dataset.floor;
+  selectedZone = null;
+  syncScopeTabs();
+  renderDetails(selectedFloor, null);
+  renderBuilding();
+  updateSimulator();
+});
+document.querySelector("#zoneTabs").addEventListener("click", (event) => {
+  const tab = event.target.closest("button[data-zone]");
+  if (!tab) return;
+  selectedZone = tab.dataset.zone === "all" ? null : tab.dataset.zone;
+  renderScopeTabs();
+  renderDetails(selectedFloor, selectedZone);
+  renderBuilding();
+  updateSimulator();
+});
 document.querySelectorAll(".mode button").forEach((button) => {
   button.addEventListener("click", setBuildingColorMode);
 });
 
 renderSummary();
+renderScopeTabs();
 renderBuilding();
 updateSimulator();
