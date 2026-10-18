@@ -28,7 +28,8 @@ function useZoneLook(z: ZoneInfo) {
 }
 
 const UP: [number, number, number] = [-Math.PI / 2, 0, 0];   // stands an XY-plane extrusion upright
-const STONE = "#8d9bb0";                                       // facade elements stay neutral so colour = data
+const STONE = "#8d9bb0";
+const NO_RAYCAST = () => null;                                 // faded/hidden floors must not catch clicks                                       // facade elements stay neutral so colour = data
 
 function Zone({ z, faded }: { z: ZoneInfo; faded: boolean }) {
   const f = footprint(z.floor, z.zone);
@@ -68,6 +69,7 @@ function Zone({ z, faded }: { z: ZoneInfo; faded: boolean }) {
       <mesh
         geometry={geom}
         rotation={UP}
+        raycast={faded ? NO_RAYCAST : THREE.Mesh.prototype.raycast}
         onClick={onClick}
         onPointerOver={(e) => { e.stopPropagation(); setHover(z.id); document.body.style.cursor = "pointer"; }}
         onPointerOut={() => { setHover(null); document.body.style.cursor = ""; }}
@@ -105,6 +107,7 @@ function Zone({ z, faded }: { z: ZoneInfo; faded: boolean }) {
 function Floor({ floor, zones }: { floor: number; zones: ZoneInfo[] }) {
   const scope = useStore((s) => s.scope);
   const view = useStore((s) => s.view);
+  const select = useStore((s) => s.select);
   const group = useRef<THREE.Group>(null);
   const focus = scope.floor === floor;
   const faded = scope.floor !== undefined && !focus;
@@ -130,8 +133,10 @@ function Floor({ floor, zones }: { floor: number; zones: ZoneInfo[] }) {
         <Edges color="#5a6c86" visible={!faded} />
       </mesh>
       {zones.map((z) => <Zone key={z.id} z={z} faded={faded} />)}
-      {!(view === "plan" && faded) && <Html position={[-SLAB.w / 2 - 3.2, 0.6, SLAB.d / 2]} center pointerEvents="none" zIndexRange={[10, 0]}>
-        <div className={`floor-tag ${focus ? "on" : ""} ${faded ? "dim" : ""}`}>{floor}</div>
+      {/* number tags pick a floor from the whole-building view; once a floor is chosen the stage floor picker takes over */}
+      {view === "3d" && scope.floor === undefined && <Html position={[-SLAB.w / 2 - 3.2, 0.6, SLAB.d / 2]} center zIndexRange={[10, 0]}>
+        <button className="floor-tag" aria-label={`Go to floor ${floor}`}
+          onClick={() => select({ floor })}>{floor}</button>
       </Html>}
     </group>
   );
@@ -269,13 +274,21 @@ export default function Building3D() {
   const select = useStore((s) => s.select);
   const view = useStore((s) => s.view);
   const zones = meta?.zones ?? [];
+  // Clicking empty space goes up one level; in plan view it never leaves the chosen floor.
+  // Only clicks on the canvas itself count: clicks on HTML labels (floor tags) bubble here too.
+  const up = (e: MouseEvent) => {
+    if (e.type !== "click" || !(e.target instanceof HTMLCanvasElement)) return;
+    const { scope: cur, view: v } = useStore.getState();
+    if (cur.zone) select({ floor: cur.floor });
+    else if (v !== "plan") select({});
+  };
   const floors = meta?.floors ?? [];
 
   return (
     <Canvas
       camera={{ position: [42, 30, 54], fov: 34, near: 0.5, far: 400 }}
       dpr={[1, 2]}
-      onPointerMissed={(e) => { if (e.type === "click") select({}); }}
+      onPointerMissed={up}
     >
       <color attach="background" args={[C.night]} />
       <fog attach="fog" args={[C.night, 60, 130]} />

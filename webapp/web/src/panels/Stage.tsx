@@ -80,6 +80,23 @@ function Player() {
   );
 }
 
+/** Floor picker: shown in plan view and once a floor is selected, when other floors (and their tags) are hidden or lifted out of view. */
+function FloorPicker() {
+  const { meta } = useData();
+  const scope = useStore((s) => s.scope);
+  const select = useStore((s) => s.select);
+  const floors = [...(meta?.floors ?? [])].sort((a, b) => b - a);
+  return (
+    <nav className="floor-picker" aria-label="Floors">
+      <span>Floor</span>
+      {floors.map((f) => (
+        <button key={f} className={scope.floor === f ? "on" : ""} aria-current={scope.floor === f}
+          onClick={() => select({ floor: f })}>{f}</button>
+      ))}
+    </nav>
+  );
+}
+
 export default function Stage() {
   const mode = useStore((s) => s.mode);
   const measure = useStore((s) => s.measure);
@@ -102,6 +119,7 @@ export default function Stage() {
         </label>
       </div>
       {mode !== "replay" && <div className="stage-bl"><Legend measure={active} /></div>}
+      {(view === "plan" || scope.floor !== undefined) && <FloorPicker />}
       <div className="stage-tr">
         {mode === "replay" && <Legend measure={active} />}
         <div className="segmented">
