@@ -178,8 +178,7 @@ with tab_sim:
     today = simulate_setpoint(z["temp_c"], z["rh_pct"], z["ac_kw"], 0, s["saving_kw_per_c"], s["moisture_g_per_kg_per_c"])
     new = simulate_setpoint(z["temp_c"], z["rh_pct"], z["ac_kw"], delta, s["saving_kw_per_c"], s["moisture_g_per_kg_per_c"])
     a, b = summarise_sim(today), summarise_sim(new)
-    periods_per_year = 7776   # office 15-min periods in a year (2019 calendar), as in qb_setpoint_sim
-    annual = b["saved_kwh"] / max(b["periods"], 1) * periods_per_year
+    annual = b["saved_kwh"] / max(b["periods"], 1) * qc.OFFICE_PERIODS_PER_YEAR
 
     m = st.columns(5)
     m[0].metric("AC saved", f"{b['saved_kwh']:,.0f} kWh", f"{b['pct_ac_saved']:.1f} % of this zone's AC", delta_color="off")

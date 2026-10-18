@@ -127,6 +127,8 @@ def ac_zones(df: pd.DataFrame) -> list[str]:
 
 # --- Setpoint simulation and rule-based system ---------------------------------------------
 PERIOD_HOURS = 0.25                 # 15-min periods
+OFFICE_PERIODS_PER_YEAR = 7776      # office 15-min periods in 2019 (is_occupied count, qb_setpoint_sim);
+                                    #   used to annualise savings from the months with sensor data
 RAISE_STEP_C = 1.0                  # the rule raises in 1 °C steps ...
 MAX_RAISE_C = 3.0                   #   ... up to this much above today's temperature
 RAISE_IF_TOO_COOL_SHARE = 0.25      # raise again while > 25 % of periods are still too cool

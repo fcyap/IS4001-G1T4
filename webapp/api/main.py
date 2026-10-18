@@ -1,0 +1,99 @@
+"""FastAPI backend for the Question B building view.
+
+Dev:   uvicorn webapp.api.main:app --reload --port 8000   (with the Vite dev server on :5173)
+Demo:  python -m webapp.api                               (also serves webapp/web/dist if built)
+"""
+from pathlib import Path
+
+import pandas as pd
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+
+from .data import load, qc, records
+from .sim import Scenario, Simulator
+
+store = load()
+sim = Simulator(store)
+app = FastAPI(title="Question B building view")
+
+
+class WhatIf(BaseModel):
+    mode: str = Field("global", pattern="^(global|rule)$")
+    global_c: float = Field(0.0, ge=0, le=qc.MAX_RAISE_C)
+    overrides: dict[str, float] = {}
+    months: list[str] = []
+
+    def scenario(self) -> Scenario:
+        clean = {k: min(max(v, 0.0), qc.MAX_RAISE_C) for k, v in self.overrides.items()}
+        return Scenario.build(self.mode, self.global_c, clean)
+
+
+@app.get("/api/meta")
+def meta():
+    return {
+        "floors": sorted({z["floor"] for z in store.registry}),
+        "zones": store.registry,
+        "months": store.months,
+        "office_days": store.office_days,
+        "rules": {"raise_step_c": qc.RAISE_STEP_C, "max_raise_c": qc.MAX_RAISE_C,
+                  "raise_if_too_cool": qc.RAISE_IF_TOO_COOL_SHARE, "too_warm_tolerance": qc.TOO_WARM_TOLERANCE,
+                  "office_periods_per_year": qc.OFFICE_PERIODS_PER_YEAR},
+        "heatmap": records(store.heatmap),
+        "monthly": records(store.monthly),
+    }
+
+
+@app.post("/api/whatif")
+def whatif(body: WhatIf):
+    return sim.whatif(body.scenario(), body.months or None)
+
+
+@app.post("/api/zone/{floor}/{zone}")
+def zone_detail(floor: int, zone: str, body: WhatIf):
+    zid = f"F{floor}:{zone}"
+    if not any(z["id"] == zid for z in store.registry):
+        raise HTTPException(404, f"unknown zone {zid}")
+    return sim.zone_detail(zid, body.scenario(), body.months or None)
+
+
+@app.post("/api/replay/{date}")
+def replay(date: str, body: WhatIf):
+    if date not in store.office_days:
+        raise HTTPException(404, f"no sensor data on {date}")
+    return sim.replay(date, body.scenario())
+
+
+@app.get("/api/load")
+def load_pattern(floor: int | None = None, zone: str | None = None):
+    """Weekly AC kWh in office hours: actual vs weather-normalised baseline."""
+    p = store.preds
+    if floor is not None:
+        p = p[p["floor"] == floor]
+    if zone is not None:
+        p = p[p["zone"] == zone]
+    if p.empty:
+        return {"weeks": [], "actual": [], "baseline": [], "test_start": "2019-07-01"}
+    weekly = p.set_index("timestamp")[["ac_kw", "pred_chosen"]].resample("W").sum()   # hourly kW -> kWh
+    weekly = weekly[(weekly["ac_kw"] > 0) | (weekly["pred_chosen"] > 0)]
+    test = p[p["split"] == "test"]
+    return {
+        "weeks": [d.strftime("%Y-%m-%d") for d in weekly.index],
+        "actual": weekly["ac_kw"].round(1).tolist(),
+        "baseline": weekly["pred_chosen"].round(1).tolist(),
+        "test_start": "2019-07-01",
+        "test_actual_kwh": round(float(test["ac_kw"].sum()), 0),
+        "test_baseline_kwh": round(float(test["pred_chosen"].sum()), 0),
+    }
+
+
+# --- Built frontend (python -m webapp.api) ------------------------------------------------------
+DIST = Path(__file__).resolve().parents[1] / "web" / "dist"
+if DIST.exists():
+    app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def spa(path: str):
+        f = DIST / path
+        return FileResponse(f if path and f.is_file() else DIST / "index.html")
