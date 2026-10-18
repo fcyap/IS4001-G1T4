@@ -1,0 +1,24 @@
+floor,zone,chosen_model,test_hours,mean_kw,cv_rmse_pct,nmbe_pct,r2,passes_ashrae14
+2,z1,Linear regression,984,27.683,16.79,-3.66,0.296,True
+2,z2,Linear regression,982,28.519,20.79,14.73,-1.587,False
+2,z4,Linear regression,984,8.1,22.81,-12.14,-0.024,False
+3,z1,Linear regression,984,18.705,21.83,-13.12,0.507,False
+3,z2,Linear regression,984,15.064,21.15,-5.31,0.585,True
+3,z4,Linear regression,984,17.766,21.13,12.57,0.64,False
+3,z5,Linear regression,984,7.366,23.69,-7.03,0.612,True
+4,z1,Linear regression,960,20.793,21.59,3.03,0.552,True
+4,z2,Linear regression,960,15.674,18.62,9.15,0.498,True
+4,z4,Linear regression,960,18.57,17.09,-0.34,0.578,True
+4,z5,Linear regression,960,8.032,21.65,11.07,0.487,False
+5,z1,Linear regression,984,20.443,24.04,-14.77,0.492,False
+5,z2,Linear regression,984,16.966,25.56,16.98,0.375,False
+5,z4,Linear regression,984,16.256,20.57,6.92,0.551,True
+5,z5,Linear regression,984,7.39,17.82,3.17,0.63,True
+6,z1,Linear regression,612,19.318,20.4,9.48,0.515,True
+6,z2,Linear regression,612,13.936,19.93,-5.76,0.678,True
+6,z4,Linear regression,612,16.663,16.52,9.03,0.596,True
+6,z5,HistGradientBoosting,612,5.253,29.24,-2.05,0.743,True
+7,z1,Linear regression,984,31.645,13.42,4.14,0.409,True
+7,z2,Linear regression,984,24.28,18.89,-4.55,0.232,True
+7,z4,Linear regression,984,25.12,16.48,3.88,0.45,True
+7,z5,Linear regression,984,9.563,31.73,0.25,0.428,False
