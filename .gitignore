@@ -9,6 +9,15 @@ data/*
 !data/qns2/
 data/qns2/*
 !data/qns2/processed/
+# Question B dashboard inputs (notebooks/qn2/app/qb_dashboard.py)
+!data/qns2/comfort/
+!data/qns2/setpoint/
+!data/qns2/baseline/
+data/qns2/baseline/*
+!data/qns2/baseline/summary_metrics.csv
+!data/qns2/baseline/floor*/
+data/qns2/baseline/floor*/*
+!data/qns2/baseline/floor*/predictions_occupied_hours.csv
 !data/qn1_hourly_master_for_excel.csv
 !data/qn1_circuit_waste_and_classification.csv
 !data/thai_holidays_18months.csv
