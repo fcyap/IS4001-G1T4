@@ -6,7 +6,7 @@ import { isAuditMeasure, monthLabel, useStore, type AuditMeasure, type MapMeasur
 
 const PICKS: Record<string, MapMeasure[]> = {
   overview: ["too_cool", "comfortable", "pmv", "ac", "audit_load"],
-  whatif: ["saved", "too_cool", "comfortable", "pmv", "ac"],
+  whatif: ["saved", "too_cool", "comfortable", "pmv", "ac", "audit_load"],
   replay: ["pmv", "ac"],
 };
 const REPLAY_LABEL: Partial<Record<Measure, string>> = { pmv: "PMV Now", ac: "AC Power Now" };

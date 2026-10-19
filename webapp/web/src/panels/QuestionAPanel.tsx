@@ -54,21 +54,25 @@ function AfterHoursLoadReadouts({ zones }: { zones: ZoneInfo[] }) {
   const preventableValues = preventable.map(loadFor).filter((v): v is number => v !== null);
   const preventableLoad = preventableValues.length ? preventableValues.reduce((sum, value) => sum + value, 0) : null;
   const criticalCount = circuits.filter((circuit) => circuit.classification === "Critical Standby").length;
-  const period = month ? monthLabel(month) : "Jul 2018–Jun 2019 average";
   const circuitCount = audits.reduce((sum, audit) => sum + audit.circuit_count, 0);
   const loadCoverage = circuitCount
     ? audits.reduce((sum, audit) => sum + (month ? audit.monthly[month]?.load_coverage_pct ?? 0 : audit.annual_load_coverage_pct) * audit.circuit_count, 0) / circuitCount
     : 100;
+  const periodLabel = month ? monthLabel(month) : "Clean-year average · Jul 2018–Jun 2019";
   return <>
-    <div className="stats">
-      <Stat label="Preventable energy opportunity" value={hasEnergy ? kwh(energy) : "Unavailable"} unit={month ? `in ${monthLabel(month)}` : "Jul 2018–Jun 2019"} />
-      <Stat label="Estimated cost opportunity (excl. VAT)" value={hasCost ? `฿${Math.round(cost).toLocaleString("en-US")}` : "Unavailable"} unit={month ? `in ${monthLabel(month)}` : "Jul 2018–Jun 2019"} />
-      <Stat label={`Mean after-hours load · ${period}`} value={n3(totalLoad)} unit="kW" />
-      <Stat label={`Preventable circuit load · ${period}`} value={n3(preventableLoad)} unit="kW" />
-      <Stat label="Preventable circuits" value={String(preventable.length)} />
-      <Stat label="Critical standby circuits" value={String(criticalCount)} />
-    </div>
-    <p className="note">Waste status classifies each circuit as Preventable Waste, Critical Standby, or Mixed. Preventable energy is accumulated surplus above circuit baselines, measured in kWh; after-hours load is average power during unoccupied hours, measured in kW. Critical standby loads are excluded from preventable energy and load.{loadCoverage < 99.9 ? ` Meter coverage is ${loadCoverage.toFixed(1)}%; displayed values use available readings only.` : " Meter coverage is complete for this scope and period."}</p>
+    <Section title="After-hours Load" aside={<span className="aside">{periodLabel}</span>}>
+      <div className="audit-kpi-primary">
+        <Stat label="Preventable energy" value={hasEnergy ? kwh(energy) : "Unavailable"} unit={month ? monthLabel(month) : "Annual total"} />
+        <Stat label="Mean after-hours load" value={n3(totalLoad)} unit="kW · average unoccupied power" />
+      </div>
+      <div className="audit-kpi-secondary">
+        <Stat label="Cost opportunity" value={hasCost ? `฿${Math.round(cost).toLocaleString("en-US")}` : "Unavailable"} unit="excl. VAT" />
+        <Stat label="Preventable circuit load" value={n3(preventableLoad)} unit="kW" />
+        <Stat label="Preventable circuits" value={String(preventable.length)} />
+        <Stat label="Critical standby" value={String(criticalCount)} />
+      </div>
+      <p className="note">Energy is accumulated excess (kWh); load is average unoccupied power (kW). Critical standby circuits are excluded from preventable totals.{loadCoverage < 99.9 ? ` Coverage: ${loadCoverage.toFixed(1)}%.` : " Coverage is complete."}</p>
+    </Section>
   </>;
 }
 
@@ -316,19 +320,20 @@ function AuditZonePopup({ audit, measure }: { audit: EnergyAuditZone; measure: M
 }
 
 
-export default function QuestionAPanel({ zones, measure, scope, auditZone, detailMeasure }: {
+export default function QuestionAPanel({ zones, measure, scope, auditZone, detailMeasure, showPlanner }: {
   zones: ZoneInfo[];
   measure: AuditMeasure;
   scope: Scope;
   auditZone?: EnergyAuditZone;
   detailMeasure: MapMeasure;
+  showPlanner: boolean;
 }) {
   return <>
     {measure === "audit_load" ? <AfterHoursLoadReadouts zones={zones} /> : <EnergyReadouts zones={zones} />}
     {measure === "audit_load" && <AuditClassificationMethod />}
-    {measure === "audit_load" && <AuditSavings zones={zones} />}
-    {measure === "audit_load" && !scope.floor && <EnergyByFloor zones={zones} />}
-    {measure === "audit_load" && !!scope.floor && <PreventableEnergyByCircuitAndMonth zones={zones} />}
-    {auditZone && <AuditZonePopup audit={auditZone} measure={detailMeasure} />}
+    {measure === "audit_load" && showPlanner && <AuditSavings zones={zones} />}
+    {measure === "audit_load" && !showPlanner && !scope.floor && <EnergyByFloor zones={zones} />}
+    {measure === "audit_load" && !showPlanner && !!scope.floor && <PreventableEnergyByCircuitAndMonth zones={zones} />}
+    {auditZone && !showPlanner && <AuditZonePopup audit={auditZone} measure={detailMeasure} />}
   </>;
 }

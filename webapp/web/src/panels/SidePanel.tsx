@@ -462,15 +462,15 @@ export default function SidePanel() {
     <div className="side-inner" key={`${scope.floor}|${scope.zone}`}>
       <ScopeHeader zones={zones} />
       {auditLayer ? <QuestionAPanel zones={zones} measure={measure as AuditMeasure} scope={scope} auditZone={auditZone}
-        detailMeasure={auditDetailMeasure} /> : <>
+        detailMeasure={auditDetailMeasure} showPlanner={mode === "whatif"} /> : <>
         {mode === "replay" ? <ReplayReadout zones={zones} /> : <Readouts results={results} />}
         {mode === "whatif" && <WhatIf results={results} zones={zones} />}
         {mode !== "replay" && <ComfortMix results={results} />}
       </>}
-      {!zone && auditLayer && measure === "audit_load" ? <>
+      {!zone && !(mode === "whatif" && measure === "audit_load") && (auditLayer && measure === "audit_load" ? <>
         <ZoneGrid zones={zones} measureOverride="audit_load" onZoneSelect={setAuditDetailMeasure} />
         <ZoneGrid zones={zones} measureOverride="audit_classification" onZoneSelect={setAuditDetailMeasure} />
-      </> : !zone && <ZoneGrid zones={zones} />}
+      </> : <ZoneGrid zones={zones} />)}
       {!auditLayer && <Alerts zones={zones} results={results} />}
       {!auditLayer && zone && zone.status === "data" && <ZoneDetailSection zone={zone} result={results[0]} />}
       {!auditLayer && <><Load /><Heat zones={zones} /></>}

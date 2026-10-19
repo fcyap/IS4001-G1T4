@@ -17,7 +17,7 @@ export default function TopBar() {
   const setMode = useStore((s) => s.setMode);
   const month = useStore((s) => s.month);
   const setMonth = useStore((s) => s.setMonth);
-  const auditView = mode === "overview" && isAuditMeasure(measure);
+  const auditView = mode !== "replay" && isAuditMeasure(measure);
   const auditMonths = useMemo(() => [...new Set((meta?.energy_audit ?? []).flatMap((zone) => Object.keys(zone.monthly)))].sort(), [meta?.energy_audit]);
   const availableMonths = auditView ? auditMonths : meta?.months ?? [];
 
