@@ -4,9 +4,11 @@ import { useData } from "../lib/data";
 import { dateLabel } from "../lib/format";
 import { isAuditMeasure, monthLabel, useStore, type AuditMeasure, type MapMeasure, type Measure } from "../lib/store";
 
-const PICKS: Record<string, MapMeasure[]> = {
-  overview: ["too_cool", "comfortable", "pmv", "ac", "audit_load"],
-  whatif: ["saved", "too_cool", "comfortable", "pmv", "ac", "audit_load"],
+// Layers offered under "Colour Zones by": after-hours waste has one view; cooling comfort depends on the mode.
+const AFTERHOURS_PICKS: MapMeasure[] = ["audit_load"];
+const COMFORT_PICKS: Record<string, MapMeasure[]> = {
+  overview: ["too_cool", "comfortable", "pmv", "ac"],
+  whatif: ["saved", "too_cool", "comfortable", "pmv", "ac"],
   replay: ["pmv", "ac"],
 };
 const REPLAY_LABEL: Partial<Record<Measure, string>> = { pmv: "PMV Now", ac: "AC Power Now" };
@@ -124,6 +126,7 @@ function FloorPicker() {
 }
 
 export default function Stage() {
+  const topic = useStore((s) => s.topic);
   const mode = useStore((s) => s.mode);
   const measure = useStore((s) => s.measure);
   const setMeasure = useStore((s) => s.setMeasure);
@@ -131,7 +134,7 @@ export default function Stage() {
   const setView = useStore((s) => s.setView);
   const scope = useStore((s) => s.scope);
   const { error } = useData();
-  const picks = PICKS[mode] ?? [];
+  const picks = topic === "afterhours" ? AFTERHOURS_PICKS : COMFORT_PICKS[mode] ?? [];
   const active = picks.includes(measure) ? measure : picks[0];
 
   useEffect(() => {
@@ -167,7 +170,9 @@ export default function Stage() {
         {mode === "replay" && <Player />}
         <p className="caption">
           {scope.floor === undefined ? "Click a floor to lift it out of the stack. " : "Click a zone for its detail. Esc goes back up. "}
-          Zone plans traced from the CU-BEMS paper (Pipattanasomporn et al., 2020, Fig. 2); facade is schematic. Waste status and after-hours load summarize Question A circuits by zone; comfort and AC layers use historical CU-BEMS data (2018–19).
+          Zone plans traced from the CU-BEMS paper (Pipattanasomporn et al., 2020, Fig. 2); facade is schematic.{" "}
+          {topic === "afterhours" ? "After-hours load sums each zone’s lighting and plug circuits outside office hours (Jul 2018–Jun 2019)."
+            : "Comfort and AC layers use historical CU-BEMS data (2018–19)."}
         </p>
       </div>
     </>

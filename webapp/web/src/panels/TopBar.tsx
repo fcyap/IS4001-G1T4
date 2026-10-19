@@ -1,23 +1,36 @@
 import { useEffect, useMemo } from "react";
 import { useData } from "../lib/data";
-import { isAuditMeasure, monthLabel, useStore, zoneName, type Mode } from "../lib/store";
+import { MODES_BY_TOPIC, monthLabel, useStore, zoneName, type Mode, type Topic } from "../lib/store";
 
-const MODES: { id: Mode; label: string; hint: string }[] = [
-  { id: "overview", label: "Today", hint: "How the building runs now" },
-  { id: "whatif", label: "Setpoint What-If", hint: "Raise or lower setpoints and see comfort and AC energy change" },
-  { id: "replay", label: "Replay a Day", hint: "Step through one office day, 15 minutes at a time" },
+const TOPICS: { id: Topic; label: string; hint: string }[] = [
+  { id: "afterhours", label: "After-hours Waste", hint: "Which circuits run outside office hours, and what switching them off is worth" },
+  { id: "comfort", label: "Cooling Comfort", hint: "Where offices are overcooled, and what a setpoint change saves" },
 ];
+
+// Mode tabs, worded for each question.
+const MODE_LABELS: Record<"afterhours" | "comfort", Partial<Record<Mode, { label: string; hint: string }>>> = {
+  afterhours: {
+    overview: { label: "Today", hint: "Where after-hours load runs and what it costs" },
+    whatif: { label: "Switch-off What-If", hint: "Choose how much preventable load to cut and see energy and cost saved" },
+  },
+  comfort: {
+    overview: { label: "Today", hint: "How the building runs now" },
+    whatif: { label: "Setpoint What-If", hint: "Raise or lower setpoints and see comfort and AC energy change" },
+    replay: { label: "Replay a Day", hint: "Step through one office day, 15 minutes at a time" },
+  },
+};
 
 export default function TopBar() {
   const { meta, loading } = useData();
   const scope = useStore((s) => s.scope);
   const select = useStore((s) => s.select);
+  const topic = useStore((s) => s.topic);
+  const navigate = useStore((s) => s.navigate);
   const mode = useStore((s) => s.mode);
-  const measure = useStore((s) => s.measure);
   const setMode = useStore((s) => s.setMode);
   const month = useStore((s) => s.month);
   const setMonth = useStore((s) => s.setMonth);
-  const auditView = mode !== "replay" && isAuditMeasure(measure);
+  const auditView = topic === "afterhours";
   const auditMonths = useMemo(() => [...new Set((meta?.energy_audit ?? []).flatMap((zone) => Object.keys(zone.monthly)))].sort(), [meta?.energy_audit]);
   const availableMonths = auditView ? auditMonths : meta?.months ?? [];
 
@@ -27,7 +40,7 @@ export default function TopBar() {
 
   return (
     <header className="topbar">
-      <div className="brand">
+      <button type="button" className="brand" onClick={() => navigate("home")} title="Back to the start page">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden>
           {[0, 1, 2, 3, 4, 5, 6].map((i) => (
             <rect key={i} x={3 + (i % 2)} y={20 - i * 2.7} width="17" height="1.7" rx="0.4"
@@ -37,6 +50,13 @@ export default function TopBar() {
         <div>
           <strong>Chamchuri 5</strong>
         </div>
+      </button>
+
+      <div className="segmented topics" role="tablist" aria-label="Use case">
+        {TOPICS.map((t) => (
+          <button key={t.id} role="tab" aria-selected={topic === t.id} title={t.hint}
+            className={topic === t.id ? "on" : ""} onClick={() => navigate(t.id)}>{t.label}</button>
+        ))}
       </div>
 
       <nav className="crumbs" aria-label="Selection">
@@ -65,12 +85,13 @@ export default function TopBar() {
             </select>
           </label>
         )}
-        <div className="segmented" role="tablist">
-          {MODES.map((m) => (
-            <button key={m.id} role="tab" aria-selected={mode === m.id} title={m.hint}
-              className={mode === m.id ? "on" : ""} onClick={() => setMode(m.id)}>{m.label}</button>
-          ))}
-        </div>
+        {topic !== "home" && <div className="segmented" role="tablist" aria-label="View">
+          {MODES_BY_TOPIC[topic].map((id) => {
+            const m = MODE_LABELS[topic][id]!;
+            return <button key={id} role="tab" aria-selected={mode === id} title={m.hint}
+              className={mode === id ? "on" : ""} onClick={() => setMode(id)}>{m.label}</button>;
+          })}
+        </div>}
         <span className={`sync ${loading ? "busy" : ""}`} title={loading ? "Updating" : "Up to date"} />
       </div>
     </header>

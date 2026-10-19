@@ -9,6 +9,8 @@ import { replayValue, useData, zoneValue } from "../lib/data";
 import { isAuditMeasure, monthLabel, useStore, zoneName } from "../lib/store";
 import { FLOORS, FLOOR_H, LIFT, SLAB, ZONE_H, bandShape, coreShape, floorY, footprint, stairSpan } from "./layout";
 
+const LANDING_ZONE = "#5d7594";
+
 const fmt = (v: number | null, unit: string) =>
   v === null ? "no data" : `${unit === "" ? (v > 0 ? "+" : "") + v.toFixed(2) : Math.round(v).toLocaleString()}${unit ? ` ${unit === "%" ? "%" : unit}` : ""}`;
 
@@ -20,6 +22,8 @@ function useZoneLook(z: ZoneInfo) {
   const month = useStore((s) => s.month);
   const t = useStore((s) => s.replay.t);
   const after = useStore((s) => s.replay.after);
+  const home = useStore((s) => s.topic === "home");
+  if (home) return { value: null, color: LANDING_ZONE, display: "", hasData: true };   // landing page: shape only, no data colours
   if (isAuditMeasure(measure)) {
     const audit = auditById.get(z.id);
     if (!audit) return { value: null, color: C.nodata, display: "No circuit data", hasData: false };
@@ -73,6 +77,7 @@ function Zone({ z, faded }: { z: ZoneInfo; faded: boolean }) {
   const select = useStore((s) => s.select);
   const setHover = useStore((s) => s.setHover);
   const auditLayer = isAuditMeasure(measure);
+  const home = useStore((s) => s.topic === "home");
   const breach = !auditLayer && mode === "whatif" && (byId.get(z.id)?.breach.length ?? 0) > 0;
   const selected = scope.floor === z.floor && scope.zone === z.zone;
   const isHover = hover === z.id;
@@ -93,10 +98,11 @@ function Zone({ z, faded }: { z: ZoneInfo; faded: boolean }) {
 
   const onClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
+    if (useStore.getState().topic === "home") return;          // the landing cards are the way in
     select(auditLayer ? { floor: z.floor, zone: z.zone }
       : scope.floor === z.floor ? { floor: z.floor, zone: z.zone } : { floor: z.floor });
   };
-  const edge = selected ? "#ffffff" : isHover ? "#cfe0f2" : !auditLayer && z.inspect ? C.inspect : "#41597a";
+  const edge = selected ? "#ffffff" : isHover ? "#cfe0f2" : !auditLayer && !home && z.inspect ? C.inspect : "#41597a";
 
   return (
     <group position={[0, 0.17, 0]}>
@@ -105,7 +111,7 @@ function Zone({ z, faded }: { z: ZoneInfo; faded: boolean }) {
         rotation={UP}
         raycast={faded ? NO_RAYCAST : THREE.Mesh.prototype.raycast}
         onClick={onClick}
-        onPointerOver={(e) => { e.stopPropagation(); setHover(z.id); document.body.style.cursor = "pointer"; }}
+        onPointerOver={(e) => { e.stopPropagation(); setHover(z.id); if (useStore.getState().topic !== "home") document.body.style.cursor = "pointer"; }}
         onPointerOut={() => { setHover(null); document.body.style.cursor = ""; }}
       >
         <meshStandardMaterial
@@ -147,9 +153,10 @@ function Floor({ floor, zones }: { floor: number; zones: ZoneInfo[] }) {
   const faded = scope.floor !== undefined && !focus;
   const base = floorY(floor);
   const lift = focus ? LIFT : scope.floor !== undefined && floor > scope.floor ? LIFT * 2.4 : 0;
+  const home = useStore((s) => s.topic === "home");
   const onFloorClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
-    select({ floor });
+    if (!home) select({ floor });
   };
   const band = useMemo(() => new THREE.ExtrudeGeometry(bandShape(), { depth: 0.17, bevelEnabled: false, curveSegments: 10 }), []);
   const core = useMemo(() => new THREE.ExtrudeGeometry(coreShape(floor), { depth: ZONE_H, bevelEnabled: false }), [floor]);
@@ -161,17 +168,17 @@ function Floor({ floor, zones }: { floor: number; zones: ZoneInfo[] }) {
   return (
     <group ref={group} position={[0, base, 0]} visible={!(view === "plan" && faded)}>
       {/* projecting floor band with rounded ends, as on the Chamchuri 5 facade */}
-      <mesh geometry={band} rotation={UP} onClick={onFloorClick} onPointerOver={() => { document.body.style.cursor = "pointer"; }} onPointerOut={() => { document.body.style.cursor = ""; }}>
+      <mesh geometry={band} rotation={UP} onClick={onFloorClick} onPointerOver={() => { if (!home) document.body.style.cursor = "pointer"; }} onPointerOut={() => { document.body.style.cursor = ""; }}>
         <meshStandardMaterial color={focus ? "#3a5272" : "#2a3d57"} transparent opacity={faded ? 0.08 : focus ? 0.8 : 0.42} depthWrite={false} roughness={0.6} />
         <Edges color={focus ? "#a9c2de" : STONE} threshold={20} visible={!faded} />
       </mesh>
       {/* lift core */}
-      <mesh geometry={core} rotation={UP} position={[0, 0.17, 0]} onClick={onFloorClick} onPointerOver={() => { document.body.style.cursor = "pointer"; }} onPointerOut={() => { document.body.style.cursor = ""; }}>
+      <mesh geometry={core} rotation={UP} position={[0, 0.17, 0]} onClick={onFloorClick} onPointerOver={() => { if (!home) document.body.style.cursor = "pointer"; }} onPointerOut={() => { document.body.style.cursor = ""; }}>
         <meshStandardMaterial color="#3b4a60" transparent opacity={faded ? 0.08 : 0.8} />
         <Edges color="#5a6c86" visible={!faded} />
       </mesh>
       {zones.map((z) => <Zone key={z.id} z={z} faded={faded} />)}
-      {!(view === "plan" && faded) && <Html position={[-SLAB.w / 2 - 3.2, 0.6, SLAB.d / 2]} center pointerEvents="auto" zIndexRange={[10, 0]}>
+      {!home && !(view === "plan" && faded) && <Html position={[-SLAB.w / 2 - 3.2, 0.6, SLAB.d / 2]} center pointerEvents="auto" zIndexRange={[10, 0]}>
         <button type="button" className={`floor-tag ${focus ? "on" : ""} ${faded ? "dim" : ""}`}
           aria-label={`Select Floor ${floor}`} title={`Select Floor ${floor}`}
           onClick={(e) => { e.stopPropagation(); select({ floor }); }}>{floor}</button>
@@ -268,6 +275,7 @@ function Ground() {
 function CameraRig({ zones }: { zones: ZoneInfo[] }) {
   const scope = useStore((s) => s.scope);
   const view = useStore((s) => s.view);
+  const topic = useStore((s) => s.topic);              // leaving or returning to the landing page re-frames the building
   const { camera, controls } = useThree() as unknown as { camera: THREE.PerspectiveCamera; controls: OrbitControlsImpl | null };
   const goal = useRef<{ pos: THREE.Vector3; target: THREE.Vector3 } | null>(null);
 
@@ -287,7 +295,7 @@ function CameraRig({ zones }: { zones: ZoneInfo[] }) {
       pos = new THREE.Vector3(target.x, top + (scope.zone ? 24 : 44), target.z + 0.01);
     }
     goal.current = { pos, target };
-  }, [scope, view, zones]);
+  }, [scope, view, zones, topic]);
 
   useEffect(() => {                 // the user grabbing the view cancels any camera move in flight
     if (!controls) return;
@@ -307,16 +315,41 @@ function CameraRig({ zones }: { zones: ZoneInfo[] }) {
   return null;
 }
 
+// The canvas is always the size of the window, anchored to the stage's bottom-right corner; the stage clips it.
+// When the side panel or top bar animates, only the camera's view offset changes, so the canvas never resizes
+// mid-animation (resizing the WebGL buffer costs 70-100 ms a frame).
+const CANVAS_STYLE = { position: "absolute", right: 0, bottom: 0, width: "100vw", height: "100vh" } as const;
+
+/** Keeps the building centred in the visible part of the stage while part of the canvas is clipped off. */
+function ViewShift() {
+  const { camera, size, gl } = useThree();
+  const last = useRef("");
+  useFrame(() => {
+    const stage = gl.domElement.closest(".stage");
+    const hiddenX = stage ? Math.max(0, Math.round(size.width - stage.clientWidth)) : 0;    // behind the side panel
+    const hiddenY = stage ? Math.max(0, Math.round(size.height - stage.clientHeight)) : 0;  // under the top bar
+    const key = `${size.width}x${size.height}:${hiddenX}:${hiddenY}`;
+    if (key === last.current) return;
+    last.current = key;
+    const cam = camera as THREE.PerspectiveCamera;
+    if (hiddenX === 0 && hiddenY === 0) cam.clearViewOffset();
+    else cam.setViewOffset(size.width, size.height, -hiddenX / 2, -hiddenY / 2, size.width, size.height);
+  });
+  return null;
+}
+
 export default function Building3D() {
   const { meta } = useData();
   const select = useStore((s) => s.select);
   const view = useStore((s) => s.view);
+  const home = useStore((s) => s.topic === "home");
   const zones = meta?.zones ?? [];
   // Clicking empty space goes up one level; in plan view it never leaves the chosen floor.
   // Only clicks on the canvas itself count: clicks on HTML labels (floor tags) bubble here too.
   const up = (e: MouseEvent) => {
     if (e.type !== "click" || !(e.target instanceof HTMLCanvasElement)) return;
-    const { scope: cur, view: v } = useStore.getState();
+    const { scope: cur, view: v, topic } = useStore.getState();
+    if (topic === "home") return;
     if (cur.zone) select({ floor: cur.floor });
     else if (v !== "plan") select({});
   };
@@ -327,6 +360,7 @@ export default function Building3D() {
       camera={{ position: [42, 30, 54], fov: 34, near: 0.5, far: 400 }}
       dpr={[1, 2]}
       onPointerMissed={up}
+      style={CANVAS_STYLE}
     >
       <color attach="background" args={[C.night]} />
       <fog attach="fog" args={[C.night, 60, 130]} />
@@ -345,8 +379,11 @@ export default function Building3D() {
         maxDistance={90}
         maxPolarAngle={view === "plan" ? 0.01 : Math.PI / 2.05}
         minPolarAngle={0}
+        autoRotate={home}
+        autoRotateSpeed={0.4}
       />
       <CameraRig zones={zones} />
+      <ViewShift />
     </Canvas>
   );
 }

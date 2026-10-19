@@ -52,7 +52,8 @@ code { font-size: 0.92em; background: var(--panel-2); padding: 1px 5px; border-r
   padding: 12px 20px; border-bottom: 1px solid var(--line);
   background: linear-gradient(180deg, #0f1e33, var(--night));
 }
-.brand { display: flex; align-items: center; gap: 10px; }
+.brand { display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 4px 6px; margin: -4px -6px; border-radius: var(--r-s); text-align: left; }
+.brand:hover { background: var(--panel); }
 .brand strong { display: block; font-size: var(--t-l); font-weight: 650; letter-spacing: -0.01em; line-height: 1.1; }
 .brand span { display: block; font-size: var(--t-s); color: var(--muted); }
 .crumbs { display: flex; align-items: center; gap: 4px; color: var(--muted); }
@@ -88,8 +89,32 @@ select.mini { padding: 3px 24px 3px 8px; font-size: var(--t-xs); }
 @keyframes blink { to { opacity: 0.2; } }
 
 /* --- Split --------------------------------------------------------------------------------- */
-.split { display: grid; grid-template-columns: minmax(380px, 40%) 1fr; min-height: 0; }
-.side { border-right: 1px solid var(--line); background: var(--panel); overflow-y: auto; min-height: 0; }
+/* max() keeps the column width interpolable, so the panel glides open from 0 on the landing page */
+.split { display: grid; grid-template-columns: max(380px, 40%) 1fr; min-height: 0; transition: grid-template-columns var(--glide) var(--ease); }
+.side { border-right: 1px solid var(--line); background: var(--panel); overflow-y: auto; overflow-x: hidden; min-height: 0; transition: border-color var(--glide) var(--ease); }
+.app--home .split { grid-template-columns: 0px 1fr; }
+.app--home .side { border-right-color: transparent; overflow: hidden; }
+
+/* --- Landing ↔ question transitions ---------------------------------------------------------
+   navigate() in store.ts fades the current view out (.is-fading, --fade), then swaps the question:
+   the top bar unfolds, the panel glides open and the new content rises in. */
+.app { --fade: 220ms; --glide: 480ms; --ease: cubic-bezier(0.22, 1, 0.36, 1); }
+.topbar-wrap { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--glide) var(--ease); }
+.topbar-wrap > div { min-height: 0; overflow: hidden; }
+.app--home .topbar-wrap { grid-template-rows: 0fr; }
+.side-enter { animation: rise-in 360ms var(--ease) 160ms backwards; min-width: calc(max(380px, 40vw) - 24px); }   /* no re-wrapping while the panel glides open */
+.stage-tl, .stage-tr, .stage-bl, .stage-bottom, .floor-picker { animation: fade-in 360ms var(--ease) 200ms backwards; }
+.landing { animation: fade-in 420ms var(--ease) 120ms backwards; }
+.landing .usecase { animation: rise-in 480ms var(--ease) 180ms backwards; }
+.landing .usecase + .usecase { animation-delay: 250ms; }
+.landing, .side-enter, .stage-tl, .stage-tr, .stage-bl, .stage-bottom, .floor-picker {
+  transition: opacity var(--fade) ease, translate var(--fade) ease;
+}
+.is-fading .landing { opacity: 0; translate: -14px 0; }
+.is-fading .side-enter, .is-fading .stage-tl, .is-fading .stage-tr, .is-fading .stage-bl,
+.is-fading .stage-bottom, .is-fading .floor-picker { opacity: 0; }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes rise-in { from { opacity: 0; translate: 0 10px; } }
 .side-inner { padding: 22px 24px 40px; display: flex; flex-direction: column; gap: 26px; }
 .stage { position: relative; min-height: 0; overflow: hidden; }
 .stage canvas { display: block; }
@@ -281,13 +306,52 @@ input[type="range"] { accent-color: var(--warm); width: 100%; }
 .floor-tag.on { color: var(--night); background: var(--ink); border-color: var(--ink); }
 .floor-tag.dim { opacity: 0.35; }
 
+/* --- Landing page ------------------------------------------------------------------------- */
+.landing {
+  position: absolute; z-index: 40; top: 0; bottom: 0; left: 0;
+  width: min(440px, 100%); padding: 40px 32px;
+  display: flex; flex-direction: column; justify-content: center; gap: 22px;
+  background: linear-gradient(90deg, rgba(12,24,41,0.92) 55%, rgba(12,24,41,0));
+}
+.landing h1 { margin: 0; font-size: var(--t-xxl); font-weight: 650; letter-spacing: -0.02em; line-height: 1.1; }
+.usecases { display: flex; flex-direction: column; gap: 12px; }
+.usecase {
+  display: flex; flex-direction: column; gap: 3px; text-align: left;
+  padding: 16px 18px; border-radius: var(--r-l);
+  background: rgba(19,34,58,0.88); backdrop-filter: blur(6px);
+  border: 1px solid var(--line-2);
+  transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+.usecase:hover { border-color: var(--usecase-accent); background: var(--panel-2); transform: translateX(3px); }
+.usecase-afterhours { --usecase-accent: var(--inspect); }
+.usecase-comfort { --usecase-accent: var(--cool); }
+.usecase-eyebrow { font-size: var(--t-xs); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--usecase-accent); }
+.usecase-title { font-size: var(--t-l); font-weight: 600; letter-spacing: -0.01em; margin-bottom: 6px; }
+.usecase-value { font-size: var(--t-s); color: var(--ink-2); }
+.usecase-value b { font-size: var(--t-xl); font-weight: 600; color: var(--ink); letter-spacing: -0.02em; margin-right: 2px; }
+.usecase-line { font-size: var(--t-s); color: var(--ink-2); }
+.usecase-detail { font-size: var(--t-xs); color: var(--muted); margin-top: 4px; }
+.usecase-action { font-size: var(--t-xs); color: var(--ink-2); margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
+.usecase-go { font-size: var(--t-s); font-weight: 600; color: var(--usecase-accent); margin-top: 8px; }
+
 @media (max-width: 900px) {
+  .app--home .split { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+  .app--home .side { display: none; }
+  .landing {
+    top: auto; width: 100%; max-height: 72%; overflow-y: auto; justify-content: flex-end; gap: 14px;
+    padding: 48px 16px 20px; background: linear-gradient(0deg, rgba(12,24,41,0.95) 70%, rgba(12,24,41,0));
+  }
+  .usecase { padding: 12px 14px; }
+  .usecase-title { margin-bottom: 2px; }
   .topbar { flex-wrap: wrap; gap: 10px 16px; padding: 10px 16px; }
   .topbar-right { margin-left: 0; flex-wrap: wrap; }
-  .split { grid-template-columns: 1fr; grid-template-rows: 55vh auto; }
+  .split { grid-template-columns: minmax(0, 1fr); grid-template-rows: 55vh auto; }   /* wide charts scroll inside, not the page */
+  .topbar > * { min-width: 0; max-width: 100%; }
+  .topbar .segmented { overflow-x: auto; }
   .stage { order: -1; }
   .side { border-right: 0; border-top: 1px solid var(--line); overflow: visible; }
   .side-inner { padding: 18px 16px 32px; }
+  .side-enter { min-width: 0; }
   .legend { display: none; }
   .audit-kpi-secondary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .audit-kpi-secondary .stat-label { min-height: 0; }

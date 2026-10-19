@@ -448,8 +448,9 @@ export default function SidePanel() {
   const scope = useStore((s) => s.scope);
   const mode = useStore((s) => s.mode);
   const measure = useStore((s) => s.measure);
+  const topic = useStore((s) => s.topic);
   const [auditDetailMeasure, setAuditDetailMeasure] = useState<MapMeasure>("audit_load");
-  const auditLayer = isAuditMeasure(measure);
+  const auditLayer = topic === "afterhours";
   if (!meta) return <div className="side-inner"><p className="empty">Loading building data…</p></div>;
 
   const zones = meta.zones.filter((z) =>

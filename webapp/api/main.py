@@ -1,4 +1,4 @@
-"""FastAPI backend for the Question B building view.
+"""FastAPI backend for the building comfort and energy view (Questions A and B).
 
 Dev:   uvicorn webapp.api.main:app --reload --port 8000   (with the Vite dev server on :5173)
 Demo:  python -m webapp.api                               (also serves webapp/web/dist if built)
@@ -16,7 +16,7 @@ from .sim import Scenario, Simulator
 
 store = load()
 sim = Simulator(store)
-app = FastAPI(title="Question B building view")
+app = FastAPI(title="Building comfort and energy view")
 
 # Manual what-if range, either way. The rule's own cap (qc.MAX_RAISE_C) still applies to its recommendations.
 WHATIF_LIMIT_C = 5.0

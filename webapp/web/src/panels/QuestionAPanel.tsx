@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { EnergyAuditZone, ZoneInfo } from "../lib/api";
 import { AUDIT_CLASS_COLORS } from "../lib/colors";
 import { useData } from "../lib/data";
-import { kwh, n0, n1, n3 } from "../lib/format";
+import { kwh, n1, n3 } from "../lib/format";
 import { monthLabel, useStore, zoneName, type AuditMeasure, type MapMeasure, type Scope } from "../lib/store";
 import { AfterHoursLoadChart, CircuitEnergyHeatmap, FloorEnergyChart, PreventableEnergyChart } from "./Charts";
 import { Section, Stat } from "./PanelPrimitives";

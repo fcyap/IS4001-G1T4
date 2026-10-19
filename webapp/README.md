@@ -1,9 +1,20 @@
 # Building comfort and energy view
 
-A local proof of concept combining Question A's after-hours circuit audit with Question B's cooling comfort and setpoint savings. The left panel summarises
-the whole building, a floor, or a zone, depending on what you select. The right panel is a schematic 3D view
-of the building's seven floors.
+A local proof of concept combining Question A's after-hours circuit audit with Question B's cooling comfort and setpoint savings.
 
+The app opens on a **landing page**: the 3D building on its own, slowly turning, with one card per question, its headline
+number and the recommended action. Pick a card to open that question on **Today**.
+
+Inside, the top bar shows the two questions, then that question's own modes. The left panel summarises the whole building,
+a floor, or a zone, depending on what you select. The right panel is a schematic 3D view of the building's seven floors.
+The **Chamchuri 5** button (or Esc from the whole-building view) returns to the landing page.
+
+**After-hours Waste** (Question A)
+- **Today**: colour zones by mean after-hours circuit load. The panel shows preventable energy and cost and the circuit
+  classification (preventable waste, critical standby or mixed). Selecting a zone shows its lighting and plug circuits.
+- **Switch-off what-if**: the savings planner. Choose how much preventable load to capture and see energy and cost saved.
+
+**Cooling Comfort** (Question B)
 - **Today**: colour zones by % of office time too cool, % comfortable, mean PMV, or AC power.
 - **Setpoint what-if**: apply the rule recommendation, or raise or lower every zone by the same amount (up to ±5 °C).
   - You can also override single zones, over the same ±5 °C range.
@@ -11,7 +22,6 @@ of the building's seven floors.
   - Zones that break the comfort guardrail in any month pulse red: too warm or too humid after a raise,
     or colder than today (and above the rule's 25 % too-cool trigger) after a cut.
 - **Replay a day**: step through one office day in 15-minute periods, as recorded or with the setpoint change applied.
-- **Question A audit layers**: use **Colour Zones by** to show circuit classification, annual preventable kWh, or estimated annual cost. Audit readouts appear alongside the comfort details, and selecting a zone shows its lighting and plug circuit details.
 
 Zone shapes are traced from Fig. 2 of the CU-BEMS paper (Pipattanasomporn et al., 2020): one plan for Floors 1-2,
 another for Floors 3-7. The facade, stair towers and rooftop PV are schematic. The data is a historical replay, not a live feed.
@@ -33,11 +43,12 @@ python -m webapp.api
 powershell -ExecutionPolicy Bypass -File webapp\run_dev.ps1
 ```
 
-**Deep links** for presenting:
-- `?mode=whatif&floor=4`
+**Deep links** for presenting. A bare URL opens the landing page:
+- `?topic=afterhours`, `?topic=afterhours&floor=1`, `?topic=afterhours&mode=whatif` (the switch-off planner)
+- `?topic=comfort`
+- `?mode=whatif&floor=4` (any link without `topic` opens Cooling Comfort)
 - `?floor=7&zone=z4`
 - `?mode=replay`
-- `?floor=1` (then choose an audit layer under **Colour Zones by**)
 - `?view=plan&floor=6`
 
 ## Where the numbers come from
