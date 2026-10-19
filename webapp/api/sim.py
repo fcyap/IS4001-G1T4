@@ -2,7 +2,12 @@
 
 Same physics as qb_common.simulate_setpoint (zone air follows the setpoint, humidity ratio rises
 by the zone's g/kg-per-°C slope, AC saved = kW-per-°C x raise capped at the AC in use), but
-vectorised over all 15-min rows with a per-row raise so the whole building updates in one pass.
+vectorised over all 15-min rows with a per-row change so the whole building updates in one pass.
+
+The change can also be negative (a lower setpoint): the zone air cools, the coil removes more
+moisture, and the AC uses kW-per-°C more per degree, capped at the zone's highest metered AC
+power (its observed capacity). The slopes were fitted on raises of a few degrees, so large
+changes in either direction are extrapolations.
 """
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -17,9 +22,9 @@ MIN_PERIODS_PER_MONTH = 160         # as in qb_setpoint_sim: about 5 office days
 
 @dataclass(frozen=True)
 class Scenario:
-    mode: str = "global"            # "global": same raise everywhere; "rule": monthly rule recommendation
-    global_c: float = 0.0
-    overrides: tuple = ()           # (("F4:z2", 2.0), ...) per-zone raise, wins over the mode
+    mode: str = "global"            # "global": same change everywhere; "rule": monthly rule recommendation
+    global_c: float = 0.0           # °C, negative = lower the setpoint
+    overrides: tuple = ()           # (("F4:z2", 2.0), ...) per-zone change, wins over the mode
 
     @classmethod
     def build(cls, mode: str, global_c: float, overrides: dict[str, float] | None):
@@ -58,6 +63,8 @@ class Simulator:
         self.temp = p["temp_c"].to_numpy(float)
         self.rh = p["rh_pct"].to_numpy(float)
         self.ac = np.nan_to_num(p["ac_kw"].to_numpy(float), nan=0.0)
+        # Highest AC power ever metered in the zone: the most a lower setpoint can draw.
+        self.ac_cap = pd.Series(self.ac).groupby(self.zone_id).transform("max").to_numpy()
         self.out_temp = p["out_temp_c"].to_numpy(float)
         per_zone = {(f, z): (r.saving_kw_per_c, r.moisture_g_per_kg_per_c) for (f, z), r in slopes.iterrows()}
         self.kw_per_c = np.array([per_zone.get(k, (0.0, 0.0))[0] for k in key])
@@ -76,12 +83,14 @@ class Simulator:
     # --- per-row physics ------------------------------------------------------------------
     def _state(self, delta: np.ndarray) -> dict:
         t = self.temp + delta
-        rh = qc.rh_from_humidity_ratio(t, self.w0 + self.dw / 1000.0 * delta)
-        pmv = self._pmv0.copy()                           # only recompute rows whose raise changed
+        w = np.maximum(self.w0 + self.dw / 1000.0 * delta, 0.0)
+        rh = qc.rh_from_humidity_ratio(t, w)
+        pmv = self._pmv0.copy()                           # only recompute rows whose setpoint changed
         ok = (delta != 0) & ~np.isnan(t) & ~np.isnan(rh)
         if ok.any():
             pmv[ok] = qc.pmv_ppd(t[ok], t[ok], rh[ok])[0]
-        saved = np.minimum(np.maximum(self.kw_per_c * delta, 0.0), self.ac)
+        # Raise: save up to the AC in use. Lower: negative saving, up to the zone's capacity.
+        saved = np.clip(self.kw_per_c * delta, -(self.ac_cap - self.ac), self.ac)
         return {"delta": delta, "temp": t, "rh": rh, "pmv": pmv,
                 "cool": pmv < qc.PMV_LOW, "warm": pmv > qc.PMV_HIGH,
                 "comf": (pmv >= qc.PMV_LOW) & (pmv <= qc.PMV_HIGH),
@@ -114,17 +123,23 @@ class Simulator:
     def _guardrail(self, a: dict, b: dict, m: np.ndarray) -> tuple[list[str], list[str]]:
         """The rule's comfort guardrail, checked month by month as recommend_raise does: a raised
         zone-month fails if > 10 % of it is too warm, or more of it is humid than max(10 %, today).
-        Months with too few periods for a recommendation (qb_setpoint_sim) are skipped."""
+        A lowered zone-month fails if more of it is too cool than both today and the share that
+        makes the rule raise the setpoint (25 %). Months with too few periods for a
+        recommendation (qb_setpoint_sim) are skipped."""
         kinds, months = set(), []
         for month in np.unique(self.month[m]):
             mm = m & (self.month == month)
-            if mm.sum() < MIN_PERIODS_PER_MONTH or b["delta"][mm].max() <= 0:
+            if mm.sum() < MIN_PERIODS_PER_MONTH:
                 continue
             bad = []
-            if b["warm"][mm].mean() > qc.TOO_WARM_TOLERANCE:
-                bad.append("too warm")
-            if b["humid"][mm].mean() > max(qc.HUMID_TOLERANCE, a["humid"][mm].mean()):
-                bad.append("too humid")
+            if b["delta"][mm].max() > 0:
+                if b["warm"][mm].mean() > qc.TOO_WARM_TOLERANCE:
+                    bad.append("too warm")
+                if b["humid"][mm].mean() > max(qc.HUMID_TOLERANCE, a["humid"][mm].mean()):
+                    bad.append("too humid")
+            if b["delta"][mm].min() < 0 and \
+                    b["cool"][mm].mean() > max(qc.RAISE_IF_TOO_COOL_SHARE, a["cool"][mm].mean()):
+                bad.append("too cool")
             if bad:
                 kinds.update(bad)
                 months.append(month)
@@ -144,6 +159,7 @@ class Simulator:
             after["annual_kwh_saved"] = round(after["saved_kwh"] / after["periods"] * qc.OFFICE_PERIODS_PER_YEAR, 0)
             zones.append({
                 "id": zid, "raise_c": round(float(d.mean()), 2), "raise_max": float(d.max()),
+                "raise_min": float(d.min()),
                 "mean_out_temp_c": round(float(np.nanmean(self.out_temp[m])), 2),
                 "before": before, "after": after, "breach": breach, "breach_months": breach_months})
         return {"zones": zones}

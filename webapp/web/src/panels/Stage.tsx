@@ -15,6 +15,7 @@ function Legend({ measure }: { measure: Measure }) {
   const m = MEASURES[measure];
   const [lo, hi] = measure === "ac" ? [0, 40] : m.domain;
   const ends = measure === "pmv" ? ["−2 Cold", "0", "+2 Warm"]
+    : measure === "saved" ? [`${(-lo).toLocaleString()} kWh Extra`, "0", `${hi.toLocaleString()} kWh Saved`]
     : [`${lo}${m.unit === "%" ? " %" : ""}`, `${hi.toLocaleString()} ${m.unit}`];
   return (
     <div className="legend">

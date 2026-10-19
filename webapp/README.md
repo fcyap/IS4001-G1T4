@@ -5,10 +5,11 @@ the whole building, a floor, or a zone, depending on what you select. The right 
 of the building's seven floors.
 
 - **Today**: colour zones by % of office time too cool, % comfortable, mean PMV, or AC power.
-- **Setpoint what-if**: apply the rule recommendation, or raise every zone by the same amount.
-  - You can also override single zones.
-  - It shows the AC energy saved and the comfort before and after.
-  - Zones that break the comfort guardrail (too warm or too humid) in any month pulse red.
+- **Setpoint what-if**: apply the rule recommendation, or raise or lower every zone by the same amount (up to ±5 °C).
+  - You can also override single zones, over the same ±5 °C range.
+  - It shows the AC energy saved (or the extra AC a lower setpoint uses) and the comfort before and after.
+  - Zones that break the comfort guardrail in any month pulse red: too warm or too humid after a raise,
+    or colder than today (and above the rule's 25 % too-cool trigger) after a cut.
 - **Replay a day**: step through one office day in 15-minute periods, as recorded or with the setpoint change applied.
 
 Zone shapes are traced from Fig. 2 of the CU-BEMS paper (Pipattanasomporn et al., 2020): one plan for Floors 1-2,
@@ -46,7 +47,11 @@ Run the notebooks first: `cubems_prepare` → `qb_baseline_model` → `qb_comfor
 The what-if uses the same physics as `qb_common.simulate_setpoint`, vectorised over every zone:
 - the zone air follows the setpoint;
 - moisture rises by the zone's g/kg-per-°C slope;
-- AC saved = kW-per-°C × raise, capped at the AC in use.
+- AC saved = kW-per-°C × raise, capped at the AC in use;
+- a lower setpoint runs the same in reverse: the air cools, moisture falls, and the AC uses kW-per-°C more per degree,
+  capped at the zone's highest metered AC power.
+
+The slopes come from changes of a few degrees, so beyond 3 °C either way (the rule's own cap) the figures are extrapolations.
 
 The guardrail is checked month by month, like `recommend_raise`.
 
