@@ -1,45 +1,37 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { api, type Summary, type ZoneInfo, type ZoneResult } from "../lib/api";
-import { C, MEASURES } from "../lib/colors";
+import { AUDIT_CLASS_COLORS, auditValueColor, C, MEASURES } from "../lib/colors";
 import { acKw, replayValue, rollup, useData, useFetch, zoneValue } from "../lib/data";
 import { kwh, n0, n1, pmvTxt, signedC } from "../lib/format";
-import { monthLabel, scenarioBody, useStore, zoneId, zoneName } from "../lib/store";
+import { isAuditMeasure, monthLabel, scenarioBody, useStore, zoneId, zoneName, type AuditMeasure, type MapMeasure } from "../lib/store";
 import { HeatMap, Histogram, LoadChart, Sparkline } from "./Charts";
-
-function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
-  return (
-    <section className="sec">
-      <div className="sec-head"><h2>{title}</h2>{aside}</div>
-      {children}
-    </section>
-  );
-}
-
-function Stat({ label, value, after, unit, hint }: { label: string; value: string; after?: string | null; unit?: string; hint?: string }) {
-  return (
-    <div className="stat" title={hint}>
-      <span className="stat-label">{label}</span>
-      <span className="stat-value">
-        {after ? <><s>{value}</s><b>{after}</b></> : <b>{value}</b>}
-        {unit && <small>{unit}</small>}
-      </span>
-    </div>
-  );
-}
+import { Section, Stat } from "./PanelPrimitives";
+import QuestionAPanel from "./QuestionAPanel";
 
 // --- Header -----------------------------------------------------------------------------------
 function ScopeHeader({ zones }: { zones: ZoneInfo[] }) {
+  const { auditById } = useData();
   const scope = useStore((s) => s.scope);
+  const measure = useStore((s) => s.measure);
+  const month = useStore((s) => s.month);
+  const auditLayer = isAuditMeasure(measure);
   const sensors = zones.filter((z) => z.has_sensor).length;
   if (scope.zone) {
     const z = zones[0];
+    const audit = z ? auditById.get(z.id) : undefined;
     return (
       <div className="scope">
         <h1>Floor {scope.floor}, {zoneName(scope.zone).toLowerCase()}</h1>
-        <p>{z?.status === "nodata" ? z.note : z?.has_ac ? "Temperature, humidity and AC power metered." : "Temperature and humidity only; no AC circuit metered."}</p>
+        <p>{auditLayer
+          ? audit ? measure === "audit_load"
+            ? `${audit.circuit_count} audited circuits · mean after-hours load for ${month ? monthLabel(month) : "all recorded months"}.`
+            : `${audit.circuit_count} audited circuits · ${audit.preventable_count} preventable, ${audit.critical_count} critical standby.`
+            : "No Question A circuit data for this zone."
+          : z?.status === "nodata" ? z.note : z?.has_ac ? "Temperature, humidity and AC power metered." : "Temperature and humidity only; no AC circuit metered."}</p>
         <div className="badges">
-          {z?.inspect && <span className="badge amber">Check First: {z.inspect}</span>}
-          {z?.baseline && (z.baseline.passes
+          {auditLayer && audit && measure !== "audit_load" && <span className="badge" style={{ color: AUDIT_CLASS_COLORS[audit.classification], borderColor: AUDIT_CLASS_COLORS[audit.classification] }}>{audit.classification}</span>}
+          {!auditLayer && z?.inspect && <span className="badge amber">Check First: {z.inspect}</span>}
+          {!auditLayer && z?.baseline && (z.baseline.passes
             ? <span className="badge ok">Baseline Passes ASHRAE 14</span>
             : <span className="badge warn">Baseline Misses ASHRAE 14 (NMBE {n1(z.baseline.nmbe_pct)} %)</span>)}
         </div>
@@ -49,11 +41,13 @@ function ScopeHeader({ zones }: { zones: ZoneInfo[] }) {
   return (
     <div className="scope">
       <h1>{scope.floor ? `Floor ${scope.floor}` : "Whole Building"}</h1>
-      <p>
-        {scope.floor ? `${zones.length} zones, ${sensors} with temperature and humidity sensors.`
+      <p>{auditLayer
+        ? `${[...auditById.values()].filter((a) => scope.floor === undefined || a.floor === scope.floor).reduce((n, a) => n + a.circuit_count, 0)} audited circuits. ${measure === "audit_load"
+          ? month ? `After-hours load is the mean of recorded unoccupied readings for ${monthLabel(month)}.` : "After-hours load is the clean-year mean for Jul 2018–Jun 2019."
+          : month ? `Energy uses recorded after-hours readings for ${monthLabel(month)}; cost uses the peak/off-peak tariff.` : "Annual figures are estimates from the circuit audit."}`
+        : <>{scope.floor ? `${zones.length} zones, ${sensors} with temperature and humidity sensors.`
           : "Office hours only: workdays 08:00–17:00, lunch hour excluded."}
-        {scope.floor === 1 && " Floor 1 has no indoor sensors, so it can’t be scored for comfort."}
-      </p>
+          {scope.floor === 1 && " Floor 1 has no indoor sensors, so it can’t be scored for comfort."}</>}</p>
     </div>
   );
 }
@@ -225,33 +219,69 @@ function ReplayReadout({ zones }: { zones: ZoneInfo[] }) {
 }
 
 // --- Zones, alerts ----------------------------------------------------------------------------
-function ZoneGrid({ zones }: { zones: ZoneInfo[] }) {
-  const { byId, replay } = useData();
+function ZoneGrid({ zones, measureOverride, onZoneSelect }: { zones: ZoneInfo[]; measureOverride?: MapMeasure; onZoneSelect?: (measure: MapMeasure) => void }) {
+  const { byId, auditById, replay } = useData();
   const mode = useStore((s) => s.mode);
-  const measure = useStore((s) => s.measure);
+  const storedMeasure = useStore((s) => s.measure);
+  const measure = measureOverride ?? storedMeasure;
+  const month = useStore((s) => s.month);
+  const auditMeasure = measure;
   const t = useStore((s) => s.replay.t);
   const after = useStore((s) => s.replay.after);
   const select = useStore((s) => s.select);
   const setHover = useStore((s) => s.setHover);
   const hover = useStore((s) => s.hover);
   const floors = [...new Set(zones.map((z) => z.floor))].sort((a, b) => b - a);
-  const m = mode === "replay" ? (measure === "ac" ? "ac" : "pmv") : measure;
+  const m = mode === "replay" ? (measure === "ac" ? "ac" : "pmv") : isAuditMeasure(measure) ? "too_cool" : measure;
+  const auditValues = [...auditById.values()].map((a) => auditMeasure === "audit_load"
+    ? month ? a.monthly[month]?.unocc_mean_kw : a.unocc_mean_kw
+    : month ? auditMeasure === "audit_cost" ? a.monthly[month]?.cost_thb : a.monthly[month]?.surplus_kwh
+      : auditMeasure === "audit_cost" ? a.annual_cost_thb : a.annual_surplus_kwh).filter((v): v is number => v !== null);
+  const auditMax = Math.max(...auditValues, 1);
+  const auditTitle = auditMeasure === "audit_classification" ? "Waste status"
+    : auditMeasure === "audit_load" ? `Mean after-hours load${month ? ` · ${monthLabel(month)}` : " · Jul 2018–Jun 2019"}`
+      : `${auditMeasure === "audit_cost" ? "Cost opportunity" : "Preventable energy"}${month ? ` · ${monthLabel(month)}` : " · Jul 2018–Jun 2019"}`;
+  const zoneTitle = measure === "audit_classification" ? "Waste Status by Zone"
+    : measure === "audit_load" ? "After-hours Load by Zone"
+      : measure === "audit_kwh" ? "Preventable Energy by Zone" : "Zones";
   return (
-    <Section title="Zones" aside={<span className="aside">{mode === "replay" ? (m === "ac" ? "AC Power Now" : "PMV Now") : MEASURES[m].label}</span>}>
+    <Section title={zoneTitle} aside={<span className="aside">{isAuditMeasure(measure) ? auditTitle : mode === "replay" ? (m === "ac" ? "AC Power Now" : "PMV Now") : MEASURES[m].label}</span>}>
       <div className="grid">
         {floors.map((f) => (
           <div className="grid-row" key={f}>
             <span className="grid-floor">{f}</span>
             {zones.filter((z) => z.floor === f).map((z) => {
-              const v = z.status === "nodata" ? null : mode === "replay"
+              const audit = auditById.get(z.id);
+              const v = isAuditMeasure(measure) ? audit ? measure === "audit_load"
+                ? month ? audit.monthly[month]?.unocc_mean_kw ?? null : audit.unocc_mean_kw
+                : month ? measure === "audit_cost" ? audit.monthly[month]?.cost_thb ?? null : measure === "audit_kwh" ? audit.monthly[month]?.surplus_kwh ?? null : null
+                  : measure === "audit_cost" ? audit.annual_cost_thb : measure === "audit_kwh" ? audit.annual_surplus_kwh : null : null
+                : z.status === "nodata" ? null : mode === "replay"
                 ? replayValue(replay, z.id, m, t, after) : zoneValue(byId.get(z.id), m, mode === "whatif");
+              const bg = isAuditMeasure(measure)
+                ? !audit || (measure !== "audit_classification" && v === null) ? undefined : measure === "audit_classification" ? AUDIT_CLASS_COLORS[audit.classification] : auditValueColor(v ?? 0, auditMax)
+                : v === null ? undefined : MEASURES[m].color(v);
+              const preventableKwh = audit ? month
+                ? audit.monthly[month]?.surplus_kwh ?? null
+                : audit.annual_surplus_kwh : null;
               const breach = mode === "whatif" && (byId.get(z.id)?.breach.length ?? 0) > 0;
+              const cellTitle = measure === "audit_classification" && audit
+                ? `${zoneName(z.zone)} · ${audit.classification} · ${audit.preventable_count} preventable, ${audit.critical_count} critical standby · ${kwh(preventableKwh)} preventable energy${month ? ` in ${monthLabel(month)}` : " annually"}`
+                : measure === "audit_load" && audit
+                  ? v === null ? `${zoneName(z.zone)} · no after-hours readings${month ? ` in ${monthLabel(month)}` : " for the annual period"} · Waste Status: ${audit.classification}` : `${zoneName(z.zone)} · ${n1(v)} kW mean after-hours load${month ? ` in ${monthLabel(month)}` : " in Jul 2018–Jun 2019"} · Waste Status: ${audit.classification} · ${kwh(preventableKwh)} preventable energy${month ? ` in ${monthLabel(month)}` : " in Jul 2018–Jun 2019"}${month && audit ? ` · ${audit.monthly[month]?.load_coverage_pct ?? 0}% load readings` : ""}`
+                  : measure === "audit_kwh" && audit
+                    ? v === null ? `${zoneName(z.zone)} · no circuit readings in ${monthLabel(month!)}` : `${zoneName(z.zone)} · ${n1(v)} kWh preventable energy${month ? ` in ${monthLabel(month)}` : " in Jul 2018–Jun 2019"}${month && audit ? ` · ${audit.monthly[month]?.energy_coverage_pct ?? 0}% energy readings` : ""}`
+                  : measure === "audit_cost" && audit
+                    ? v === null ? `${zoneName(z.zone)} · no circuit readings in ${monthLabel(month!)}` : `${zoneName(z.zone)} · ฿${Math.round(v).toLocaleString("en-US")} cost opportunity, excluding VAT${month ? ` in ${monthLabel(month)}` : " in Jul 2018–Jun 2019"}${month ? ` · ${audit.monthly[month]?.energy_coverage_pct ?? 0}% energy readings` : ""}`
+                  : `Floor ${f} ${zoneName(z.zone)}`;
               return (
-                <button key={z.id} className={`dot ${hover === z.id ? "hot" : ""} ${z.inspect ? "inspect" : ""} ${breach ? "breach" : ""} ${z.status}`}
-                  style={{ background: v === null ? undefined : MEASURES[m].color(v) }}
+                <button key={z.id} className={`dot ${hover === z.id ? "hot" : ""} ${isAuditMeasure(measure)
+                  ? audit ? (measure !== "audit_classification" && v === null ? "nodata" : "") : "nodata"
+                  : `${z.inspect ? "inspect" : ""} ${breach ? "breach" : ""} ${z.status}`}`}
+                  style={{ background: bg }}
                   onMouseEnter={() => setHover(z.id)} onMouseLeave={() => setHover(null)}
-                  onClick={() => select({ floor: z.floor, zone: z.zone })}
-                  aria-label={`Floor ${f} ${zoneName(z.zone)}`}>
+                  onClick={() => { onZoneSelect?.(measure); select({ floor: z.floor, zone: z.zone }); }}
+                  aria-label={cellTitle} title={cellTitle}>
                   <span>{z.zone.slice(1)}</span>
                 </button>
               );
@@ -259,6 +289,12 @@ function ZoneGrid({ zones }: { zones: ZoneInfo[] }) {
           </div>
         ))}
       </div>
+      {isAuditMeasure(measure) && <div className="zone-heat-legend">
+        {measure === "audit_classification"
+          ? Object.entries(AUDIT_CLASS_COLORS).map(([label, color]) => <span key={label}><i style={{ background: color }} />{label}</span>)
+          : <><span>0 {measure === "audit_kwh" ? "kWh" : "kW"}</span><i className="zone-heat-scale" style={{ background: `linear-gradient(90deg, ${[0, .25, .5, .75, 1].map((t) => auditValueColor(auditMax * t * t, auditMax)).join(", ")})` }} /><span>{n1(auditMax)} {measure === "audit_kwh" ? "kWh" : "kW"}</span></>}
+      </div>}
+      {measure === "audit_load" && <p className="zone-map-note">Circle color shows mean after-hours load. Click a zone for its Waste Status, circuits, and energy details.</p>}
     </Section>
   );
 }
@@ -408,27 +444,36 @@ function ZoneDetailSection({ zone, result }: { zone: ZoneInfo; result?: ZoneResu
 
 // --- Panel ------------------------------------------------------------------------------------
 export default function SidePanel() {
-  const { meta, byId } = useData();
+  const { meta, byId, auditById } = useData();
   const scope = useStore((s) => s.scope);
   const mode = useStore((s) => s.mode);
+  const measure = useStore((s) => s.measure);
+  const [auditDetailMeasure, setAuditDetailMeasure] = useState<MapMeasure>("audit_load");
+  const auditLayer = isAuditMeasure(measure);
   if (!meta) return <div className="side-inner"><p className="empty">Loading building data…</p></div>;
 
   const zones = meta.zones.filter((z) =>
     (scope.floor === undefined || z.floor === scope.floor) && (!scope.zone || z.zone === scope.zone));
   const results = zones.map((z) => byId.get(z.id)).filter((r): r is ZoneResult => !!r);
   const zone = scope.zone ? zones[0] : null;
+  const auditZone = zone ? auditById.get(zone.id) : undefined;
 
   return (
     <div className="side-inner" key={`${scope.floor}|${scope.zone}`}>
       <ScopeHeader zones={zones} />
-      {mode === "replay" ? <ReplayReadout zones={zones} /> : <Readouts results={results} />}
-      {mode === "whatif" && <WhatIf results={results} zones={zones} />}
-      {mode !== "replay" && <ComfortMix results={results} />}
-      {!zone && <ZoneGrid zones={zones} />}
-      <Alerts zones={zones} results={results} />
-      {zone && zone.status === "data" && <ZoneDetailSection zone={zone} result={results[0]} />}
-      <Load />
-      <Heat zones={zones} />
+      {auditLayer ? <QuestionAPanel zones={zones} measure={measure as AuditMeasure} scope={scope} auditZone={auditZone}
+        detailMeasure={auditDetailMeasure} /> : <>
+        {mode === "replay" ? <ReplayReadout zones={zones} /> : <Readouts results={results} />}
+        {mode === "whatif" && <WhatIf results={results} zones={zones} />}
+        {mode !== "replay" && <ComfortMix results={results} />}
+      </>}
+      {!zone && auditLayer && measure === "audit_load" ? <>
+        <ZoneGrid zones={zones} measureOverride="audit_load" onZoneSelect={setAuditDetailMeasure} />
+        <ZoneGrid zones={zones} measureOverride="audit_classification" onZoneSelect={setAuditDetailMeasure} />
+      </> : !zone && <ZoneGrid zones={zones} />}
+      {!auditLayer && <Alerts zones={zones} results={results} />}
+      {!auditLayer && zone && zone.status === "data" && <ZoneDetailSection zone={zone} result={results[0]} />}
+      {!auditLayer && <><Load /><Heat zones={zones} /></>}
     </div>
   );
 }

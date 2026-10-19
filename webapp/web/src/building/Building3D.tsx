@@ -4,9 +4,9 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { ZoneInfo } from "../lib/api";
-import { C, MEASURES } from "../lib/colors";
+import { AUDIT_CLASS_COLORS, auditValueColor, C, MEASURES } from "../lib/colors";
 import { replayValue, useData, zoneValue } from "../lib/data";
-import { useStore, zoneName } from "../lib/store";
+import { isAuditMeasure, monthLabel, useStore, zoneName } from "../lib/store";
 import { FLOORS, FLOOR_H, LIFT, SLAB, ZONE_H, bandShape, coreShape, floorY, footprint, stairSpan } from "./layout";
 
 const fmt = (v: number | null, unit: string) =>
@@ -14,17 +14,48 @@ const fmt = (v: number | null, unit: string) =>
 
 /** Value + colour for one zone under the current mode, measure and replay step. */
 function useZoneLook(z: ZoneInfo) {
-  const { byId, replay } = useData();
+  const { byId, auditById, replay, meta } = useData();
   const mode = useStore((s) => s.mode);
   const measure = useStore((s) => s.measure);
+  const month = useStore((s) => s.month);
   const t = useStore((s) => s.replay.t);
   const after = useStore((s) => s.replay.after);
-  if (z.status === "nodata") return { value: null, color: C.nodata };
+  if (isAuditMeasure(measure)) {
+    const audit = auditById.get(z.id);
+    if (!audit) return { value: null, color: C.nodata, display: "No circuit data", hasData: false };
+    if (measure === "audit_classification")
+      return { value: null, color: AUDIT_CLASS_COLORS[audit.classification], display: `${audit.classification} · ${audit.preventable_count} preventable / ${audit.critical_count} standby`, hasData: true };
+    if (measure === "audit_load") {
+      const value = month ? audit.monthly[month]?.unocc_mean_kw ?? null : audit.unocc_mean_kw;
+      if (value === null) return { value: null, color: C.nodata, display: `No after-hours readings · ${monthLabel(month!)}`, hasData: false };
+      const values = (meta?.energy_audit ?? []).map((item) => month
+        ? item.monthly[month]?.unocc_mean_kw : item.unocc_mean_kw).filter((v): v is number => v !== null);
+      const max = Math.max(...values, 1);
+      const period = month ? monthLabel(month) : "Jul 2018–Jun 2019 average";
+      const shown = value < 1 ? value.toFixed(3) : value.toFixed(1);
+      const coverage = month ? audit.monthly[month]?.load_coverage_pct : audit.annual_load_coverage_pct;
+      const partial = coverage !== undefined && coverage < 99.9 ? ` · ${coverage}% readings available` : "";
+      return { value, color: auditValueColor(value, max), display: `${shown} kW mean after-hours load · ${period}${partial}`, hasData: true };
+    }
+    const monthlyValue = measure === "audit_cost" ? audit.monthly[month ?? ""]?.cost_thb : audit.monthly[month ?? ""]?.surplus_kwh;
+    const value = month ? monthlyValue ?? null : measure === "audit_cost" ? audit.annual_cost_thb : audit.annual_surplus_kwh;
+    if (value === null) return { value: null, color: C.nodata, display: `No circuit readings · ${monthLabel(month!)}`, hasData: false };
+    const values = (meta?.energy_audit ?? []).map((item) => month
+      ? measure === "audit_cost" ? item.monthly[month]?.cost_thb : item.monthly[month]?.surplus_kwh
+      : measure === "audit_cost" ? item.annual_cost_thb : item.annual_surplus_kwh);
+    const max = Math.max(...values.filter((v): v is number => v !== null), 1);
+    const unit = measure === "audit_cost" ? month ? `THB · ${monthLabel(month)}` : "THB · Jul 2018–Jun 2019"
+      : month ? `kWh · ${monthLabel(month)}` : "kWh · Jul 2018–Jun 2019";
+    const coverage = month ? audit.monthly[month]?.energy_coverage_pct : audit.annual_energy_coverage_pct;
+    const partial = coverage !== undefined && coverage < 99.9 ? ` · ${coverage}% readings available` : "";
+    return { value, color: auditValueColor(value, max), display: `${fmt(value, unit)} · ${audit.classification}${partial}`, hasData: true };
+  }
+  if (z.status === "nodata") return { value: null, color: C.nodata, display: z.note ?? "No sensor or AC", hasData: false };
   const m = mode === "replay" ? (measure === "ac" ? "ac" : "pmv") : measure;
   const value = mode === "replay"
     ? replayValue(replay, z.id, m, t, after)
     : zoneValue(byId.get(z.id), m, mode === "whatif");
-  return { value, color: value === null ? C.nodata : MEASURES[m].color(value), measure: m };
+  return { value, color: value === null ? C.nodata : MEASURES[m].color(value), display: fmt(value, MEASURES[m].unit), measure: m, hasData: value !== null };
 }
 
 const UP: [number, number, number] = [-Math.PI / 2, 0, 0];   // stands an XY-plane extrusion upright
@@ -33,20 +64,22 @@ const NO_RAYCAST = () => null;                                 // faded/hidden f
 
 function Zone({ z, faded }: { z: ZoneInfo; faded: boolean }) {
   const f = footprint(z.floor, z.zone);
-  const { value, color, measure } = useZoneLook(z);
+  const { color, display, hasData } = useZoneLook(z);
   const { byId } = useData();
   const mode = useStore((s) => s.mode);
+  const measure = useStore((s) => s.measure);
   const scope = useStore((s) => s.scope);
   const hover = useStore((s) => s.hover);
   const select = useStore((s) => s.select);
   const setHover = useStore((s) => s.setHover);
-  const breach = mode === "whatif" && (byId.get(z.id)?.breach.length ?? 0) > 0;
+  const auditLayer = isAuditMeasure(measure);
+  const breach = !auditLayer && mode === "whatif" && (byId.get(z.id)?.breach.length ?? 0) > 0;
   const selected = scope.floor === z.floor && scope.zone === z.zone;
   const isHover = hover === z.id;
   const pulse = useRef<THREE.LineBasicMaterial>(null);
   const mat = useRef<THREE.MeshStandardMaterial>(null);
   const target = useMemo(() => new THREE.Color(color), [color]);
-  const h = z.status === "nodata" ? ZONE_H * 0.55 : ZONE_H;
+  const h = hasData ? ZONE_H : ZONE_H * 0.55;
   const geom = useMemo(() => new THREE.ExtrudeGeometry(f.shape, { depth: h, bevelEnabled: false }), [f, h]);
   const outline = useMemo(() => new THREE.EdgesGeometry(geom, 20), [geom]);
 
@@ -60,9 +93,10 @@ function Zone({ z, faded }: { z: ZoneInfo; faded: boolean }) {
 
   const onClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
-    select(scope.floor === z.floor ? { floor: z.floor, zone: z.zone } : { floor: z.floor });
+    select(auditLayer ? { floor: z.floor, zone: z.zone }
+      : scope.floor === z.floor ? { floor: z.floor, zone: z.zone } : { floor: z.floor });
   };
-  const edge = selected ? "#ffffff" : isHover ? "#cfe0f2" : z.inspect ? C.inspect : "#41597a";
+  const edge = selected ? "#ffffff" : isHover ? "#cfe0f2" : !auditLayer && z.inspect ? C.inspect : "#41597a";
 
   return (
     <group position={[0, 0.17, 0]}>
@@ -78,11 +112,11 @@ function Zone({ z, faded }: { z: ZoneInfo; faded: boolean }) {
           ref={mat}
           color={color}
           emissive={color}
-          emissiveIntensity={z.status === "nodata" ? 0.05 : selected ? 0.75 : 0.42}
+          emissiveIntensity={!hasData ? 0.05 : selected ? 0.75 : 0.42}
           roughness={0.55}
           metalness={0.05}
           transparent
-          opacity={faded ? 0.14 : z.status === "nodata" ? 0.55 : 0.9}
+          opacity={faded ? 0.14 : hasData ? 0.9 : 0.55}
           depthWrite={!faded}
         />
         {!breach && <Edges color={edge} threshold={20} visible={!faded || selected} />}
@@ -96,7 +130,7 @@ function Zone({ z, faded }: { z: ZoneInfo; faded: boolean }) {
         <Html center position={[f.cx, h + 0.7, f.cz]} pointerEvents="none" zIndexRange={[20, 0]}>
           <div className={`tag ${isHover ? "tag-hover" : ""}`}>
             <b>{zoneName(z.zone)}</b>
-            <span>{z.status === "nodata" ? (z.note ?? "no sensor") : fmt(value, MEASURES[measure ?? "pmv"].unit)}</span>
+            <span>{display}</span>
           </div>
         </Html>
       )}
@@ -106,13 +140,17 @@ function Zone({ z, faded }: { z: ZoneInfo; faded: boolean }) {
 
 function Floor({ floor, zones }: { floor: number; zones: ZoneInfo[] }) {
   const scope = useStore((s) => s.scope);
-  const view = useStore((s) => s.view);
   const select = useStore((s) => s.select);
+  const view = useStore((s) => s.view);
   const group = useRef<THREE.Group>(null);
   const focus = scope.floor === floor;
   const faded = scope.floor !== undefined && !focus;
   const base = floorY(floor);
   const lift = focus ? LIFT : scope.floor !== undefined && floor > scope.floor ? LIFT * 2.4 : 0;
+  const onFloorClick = (e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation();
+    select({ floor });
+  };
   const band = useMemo(() => new THREE.ExtrudeGeometry(bandShape(), { depth: 0.17, bevelEnabled: false, curveSegments: 10 }), []);
   const core = useMemo(() => new THREE.ExtrudeGeometry(coreShape(floor), { depth: ZONE_H, bevelEnabled: false }), [floor]);
 
@@ -123,20 +161,20 @@ function Floor({ floor, zones }: { floor: number; zones: ZoneInfo[] }) {
   return (
     <group ref={group} position={[0, base, 0]} visible={!(view === "plan" && faded)}>
       {/* projecting floor band with rounded ends, as on the Chamchuri 5 facade */}
-      <mesh geometry={band} rotation={UP}>
+      <mesh geometry={band} rotation={UP} onClick={onFloorClick} onPointerOver={() => { document.body.style.cursor = "pointer"; }} onPointerOut={() => { document.body.style.cursor = ""; }}>
         <meshStandardMaterial color={focus ? "#3a5272" : "#2a3d57"} transparent opacity={faded ? 0.08 : focus ? 0.8 : 0.42} depthWrite={false} roughness={0.6} />
         <Edges color={focus ? "#a9c2de" : STONE} threshold={20} visible={!faded} />
       </mesh>
       {/* lift core */}
-      <mesh geometry={core} rotation={UP} position={[0, 0.17, 0]}>
+      <mesh geometry={core} rotation={UP} position={[0, 0.17, 0]} onClick={onFloorClick} onPointerOver={() => { document.body.style.cursor = "pointer"; }} onPointerOut={() => { document.body.style.cursor = ""; }}>
         <meshStandardMaterial color="#3b4a60" transparent opacity={faded ? 0.08 : 0.8} />
         <Edges color="#5a6c86" visible={!faded} />
       </mesh>
       {zones.map((z) => <Zone key={z.id} z={z} faded={faded} />)}
-      {/* number tags pick a floor from the whole-building view; once a floor is chosen the stage floor picker takes over */}
-      {view === "3d" && scope.floor === undefined && <Html position={[-SLAB.w / 2 - 3.2, 0.6, SLAB.d / 2]} center zIndexRange={[10, 0]}>
-        <button className="floor-tag" aria-label={`Go to floor ${floor}`}
-          onClick={() => select({ floor })}>{floor}</button>
+      {!(view === "plan" && faded) && <Html position={[-SLAB.w / 2 - 3.2, 0.6, SLAB.d / 2]} center pointerEvents="auto" zIndexRange={[10, 0]}>
+        <button type="button" className={`floor-tag ${focus ? "on" : ""} ${faded ? "dim" : ""}`}
+          aria-label={`Select Floor ${floor}`} title={`Select Floor ${floor}`}
+          onClick={(e) => { e.stopPropagation(); select({ floor }); }}>{floor}</button>
       </Html>}
     </group>
   );

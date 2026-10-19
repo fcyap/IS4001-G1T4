@@ -1,7 +1,8 @@
-"""Loads the Question B outputs once and builds the zone registry used by the building view.
+"""Loads Question A and Question B outputs once for the building view.
 
-Everything here is read from the CSVs written by the notebooks in notebooks/qn2; nothing is
-recomputed except what the what-if simulation needs (see sim.py).
+Question B reads the CSVs written by notebooks/qn2. Question A combines its audit summary with
+hourly circuit readings and tariff periods to provide month-specific energy and cost opportunities.
+The what-if logic lives in sim.py and the frontend.
 """
 import sys
 from dataclasses import dataclass
@@ -11,6 +12,9 @@ import numpy as np
 import pandas as pd
 
 QN2_DIR = Path(__file__).resolve().parents[2] / "notebooks" / "qn2"
+QA_PATH = Path(__file__).resolve().parents[2] / "data" / "qn1_circuit_waste_and_classification.csv"
+QA_HOURLY_PATH = Path(__file__).resolve().parents[2] / "data" / "qn1_hourly_master_for_excel.csv"
+QA_HOLIDAYS_PATH = Path(__file__).resolve().parents[2] / "data" / "thai_holidays_18months.csv"
 sys.path.insert(0, str(QN2_DIR))
 import qb_common as qc  # noqa: E402
 
@@ -28,6 +32,7 @@ class Store:
     monthly: pd.DataFrame
     preds: pd.DataFrame             # hourly actual vs baseline, occupied hours
     registry: list[dict]
+    energy_audit: list[dict]
     months: list[str]
     office_days: list[str]
 
@@ -69,6 +74,110 @@ def _zone_registry(zone_summary, slopes, inspection, baseline) -> list[dict]:
     return out
 
 
+def _energy_audit() -> list[dict]:
+    """Normalize Question A circuits and calculate observed monthly opportunities.
+
+    The UI's annual view uses the notebook's clean training window (Jul 2018-Jun 2019),
+    summed from the same hourly readings used for the monthly view. This keeps annual
+    totals additive and avoids mixing the notebook's 18-month normalized CSV with one-year
+    monthly values.
+    """
+    circuits = pd.read_csv(QA_PATH)
+    hourly = pd.read_csv(QA_HOURLY_PATH, parse_dates=["Date"])
+    hourly["month"] = hourly["Date"].dt.strftime("%Y-%m")
+    holidays = set(pd.to_datetime(pd.read_csv(QA_HOLIDAYS_PATH)["Date"]).dt.date)
+    dates = hourly["Date"]
+    hourly["is_peak"] = (
+        (dates.dt.dayofweek < 5) & (~dates.dt.date.isin(holidays)) &
+        (dates.dt.hour >= 9) & (dates.dt.hour < 22)
+    )
+    hourly["tariff_thb_per_kwh"] = np.where(hourly["is_peak"], 4.3297, 2.5849)
+    circuits["floor"] = circuits["Floor"].astype(str).str.extract(r"(\d+)", expand=False).astype(int)
+    circuits["zone"] = circuits["Zone_Col"].astype(str).str.extract(r"^(z\d+)_", expand=False)
+    circuits = circuits.dropna(subset=["zone"])
+    hourly_by_month = list(hourly.groupby("month", sort=True))
+    annual_months = {f"{year}-{month:02d}" for year, month in [(2018, m) for m in range(7, 13)] + [(2019, m) for m in range(1, 7)]}
+
+    grouped = []
+    for (floor, zone), rows in circuits.groupby(["floor", "zone"], sort=True):
+        items = []
+        for row in rows.itertuples():
+            is_preventable = row.Classification == "Preventable Waste"
+            month_values = {}
+            for month, frame in hourly_by_month:
+                unoccupied = frame.loc[frame["Is_Unoccupied"], row.Circuit_ID]
+                observed = unoccupied.dropna()
+                excess = (observed - float(row.Baseload_kW)).clip(lower=0) if is_preventable else observed.iloc[0:0]
+                monthly_kwh = float(excess.sum())  # each row is one hour of mean kW
+                monthly_cost = float((excess * frame.loc[excess.index, "tariff_thb_per_kwh"]).sum())
+                monthly_mean = observed.mean()
+                month_values[month] = {
+                    "surplus_kwh": round(monthly_kwh, 2) if len(observed) else None,
+                    "cost_thb": round(monthly_cost, 2) if len(observed) else None,
+                    "unocc_mean_kw": round(float(monthly_mean), 3) if pd.notna(monthly_mean) else None,
+                    "unocc_hours": int(len(observed)),
+                    "expected_unocc_hours": int(len(unoccupied)),
+                }
+            annual_periods = [month_values[m] for m in sorted(annual_months) if m in month_values]
+            annual_hours = sum(period["unocc_hours"] for period in annual_periods)
+            annual_expected_hours = sum(period["expected_unocc_hours"] for period in annual_periods)
+            annual_surplus = sum(period["surplus_kwh"] or 0 for period in annual_periods)
+            annual_cost = sum(period["cost_thb"] or 0 for period in annual_periods)
+            annual_load_kwh = sum((period["unocc_mean_kw"] or 0) * period["unocc_hours"] for period in annual_periods)
+            items.append({
+                "circuit_id": str(row.Circuit_ID),
+                "type": str(row.Type),
+                "classification": str(row.Classification),
+                "unocc_mean_kw": round(annual_load_kwh / annual_hours, 3) if annual_hours else None,
+                "annual_unocc_hours": annual_hours,
+                "annual_expected_unocc_hours": annual_expected_hours,
+                "baseload_kw": float(row.Baseload_kW),
+                "annual_surplus_kwh": round(annual_surplus, 2),
+                "annual_cost_thb": round(annual_cost, 2),
+                "monthly": month_values,
+            })
+        preventable = [item for item in items if item["classification"] == "Preventable Waste"]
+        critical = [item for item in items if item["classification"] == "Critical Standby"]
+        label = "Mixed" if preventable and critical else "Preventable Waste" if preventable else "Critical Standby"
+        months = sorted({month for item in items for month in item["monthly"]})
+        monthly = {}
+        for month in months:
+            periods = [item["monthly"][month] for item in items]
+            preventable_periods = [item["monthly"][month] for item in preventable]
+            total_expected = sum(p["expected_unocc_hours"] for p in periods)
+            total_observed = sum(p["unocc_hours"] for p in periods)
+            energy_expected = sum(p["expected_unocc_hours"] for p in preventable_periods)
+            energy_observed = sum(p["unocc_hours"] for p in preventable_periods)
+            load_values = [p["unocc_mean_kw"] for p in periods if p["unocc_mean_kw"] is not None]
+            load = sum(load_values) if load_values else None
+            monthly[month] = {
+                "surplus_kwh": round(sum(p["surplus_kwh"] or 0 for p in preventable_periods), 2) if not preventable or energy_observed else None,
+                "cost_thb": round(sum(p["cost_thb"] or 0 for p in preventable_periods), 2) if not preventable or energy_observed else None,
+                "unocc_mean_kw": round(load, 3) if load is not None else None,
+                "unocc_hours": total_observed,
+                "expected_unocc_hours": total_expected,
+                "energy_coverage_pct": round(100 * energy_observed / energy_expected, 1) if energy_expected else 100.0,
+                "load_coverage_pct": round(100 * total_observed / total_expected, 1) if total_expected else 100.0,
+            }
+        grouped.append({
+            "id": f"F{floor}:{zone}", "floor": int(floor), "zone": str(zone),
+            "classification": label,
+            "circuit_count": len(items),
+            "preventable_count": len(preventable),
+            "critical_count": len(critical),
+            "annual_surplus_kwh": round(sum(item["annual_surplus_kwh"] for item in preventable), 2),
+            "annual_cost_thb": round(sum(item["annual_cost_thb"] for item in preventable), 2),
+            "unocc_mean_kw": round(sum(item["unocc_mean_kw"] or 0 for item in items), 3) if any(item["unocc_mean_kw"] is not None for item in items) else None,
+            "annual_unocc_hours": sum(item["annual_unocc_hours"] for item in items),
+            "annual_expected_unocc_hours": sum(item["annual_expected_unocc_hours"] for item in items),
+            "annual_energy_coverage_pct": round(100 * sum(item["annual_unocc_hours"] for item in preventable) / sum(item["annual_expected_unocc_hours"] for item in preventable), 1) if preventable and sum(item["annual_expected_unocc_hours"] for item in preventable) else 100.0,
+            "annual_load_coverage_pct": round(100 * sum(item["annual_unocc_hours"] for item in items) / max(sum(item["annual_expected_unocc_hours"] for item in items), 1), 1),
+            "monthly": monthly,
+            "circuits": items,
+        })
+    return grouped
+
+
 def load() -> Store:
     pmv = pd.read_csv(qc.COMFORT_DIR / "pmv_15min.csv", parse_dates=["timestamp"])
     pmv = pmv.sort_values(["floor", "zone", "timestamp"]).reset_index(drop=True)
@@ -89,6 +198,7 @@ def load() -> Store:
     return Store(
         pmv=pmv, heatmap=heatmap, inspection=inspection, slopes=slopes, monthly=monthly, preds=preds,
         registry=_zone_registry(zone_summary, slopes, inspection, baseline),
+        energy_audit=_energy_audit(),
         months=sorted(pmv["month"].unique()), office_days=office_days)
 
 

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { api, type Meta, type Replay, type Summary, type WhatIfResult, type ZoneResult } from "./api";
+import { api, type EnergyAuditZone, type Meta, type Replay, type Summary, type WhatIfResult, type ZoneResult } from "./api";
 import type { Measure } from "./store";
 import { scenarioBody, useStore } from "./store";
 
@@ -7,12 +7,13 @@ interface Data {
   meta: Meta | null;
   result: WhatIfResult | null;
   byId: Map<string, ZoneResult>;
+  auditById: Map<string, EnergyAuditZone>;
   replay: Replay | null;
   loading: boolean;
   error: string | null;
 }
 
-const Ctx = createContext<Data>({ meta: null, result: null, byId: new Map(), replay: null, loading: true, error: null });
+const Ctx = createContext<Data>({ meta: null, result: null, byId: new Map(), auditById: new Map(), replay: null, loading: true, error: null });
 export const useData = () => useContext(Ctx);
 
 /** Fetch with abort + small debounce, so dragging a slider sends one request, not twenty. */
@@ -60,6 +61,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     meta: meta.data,
     result: result.data,
     byId: new Map((result.data?.zones ?? []).map((z) => [z.id, z])),
+    auditById: new Map((meta.data?.energy_audit ?? []).map((z) => [z.id, z])),
     replay: replay.data,
     loading: meta.loading || result.loading || replay.loading,
     error: meta.error ?? result.error ?? replay.error,

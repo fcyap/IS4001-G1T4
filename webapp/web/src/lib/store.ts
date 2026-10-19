@@ -3,13 +3,17 @@ import type { ScenarioBody } from "./api";
 
 export type Mode = "overview" | "whatif" | "replay";
 export type Measure = "too_cool" | "comfortable" | "pmv" | "ac" | "saved";
+export type AuditMeasure = "audit_classification" | "audit_load" | "audit_kwh" | "audit_cost";
+export type MapMeasure = Measure | AuditMeasure;
+export const isAuditMeasure = (measure: MapMeasure): measure is AuditMeasure => measure.startsWith("audit_");
 export interface Scope { floor?: number; zone?: string }
 
 interface State {
   scope: Scope;
   mode: Mode;
-  month: string | null;             // null = all sensor months
-  measure: Measure;
+  month: string | null;             // null = all months available to the active view
+  measure: MapMeasure;
+  auditCaptureRates: Record<string, number>;
   view: "3d" | "plan";
   hover: string | null;
   whatif: { mode: "global" | "rule"; globalC: number; overrides: Record<string, number> };
@@ -19,7 +23,9 @@ interface State {
   up: () => void;
   setMode: (m: Mode) => void;
   setMonth: (m: string | null) => void;
-  setMeasure: (m: Measure) => void;
+  setMeasure: (m: MapMeasure) => void;
+  setAuditCaptureRate: (zoneId: string, rate: number) => void;
+  setAuditCaptureRates: (zoneIds: string[], rate: number) => void;
   setView: (v: "3d" | "plan") => void;
   setHover: (id: string | null) => void;
   setWhatif: (p: Partial<State["whatif"]>) => void;
@@ -37,6 +43,7 @@ export const useStore = create<State>((set, get) => ({
   mode: initialMode,
   month: null,
   measure: initialMode === "replay" ? "pmv" : initialMode === "whatif" ? "saved" : "too_cool",
+  auditCaptureRates: {},
   view: q.get("view") === "plan" ? "plan" : "3d",
   hover: null,
   whatif: { mode: "rule", globalC: 1, overrides: {} },
@@ -50,11 +57,16 @@ export const useStore = create<State>((set, get) => ({
   setMode: (mode) => set((s) => ({
     mode,
     measure: mode === "replay" ? (s.measure === "ac" ? "ac" : "pmv")
-      : mode !== "whatif" && s.measure === "saved" ? "too_cool" : s.measure,
+      : mode === "whatif" ? "saved"
+      : s.measure === "saved" || isAuditMeasure(s.measure) ? "too_cool" : s.measure,
     replay: { ...s.replay, playing: false },
   })),
   setMonth: (month) => set({ month }),
   setMeasure: (measure) => set({ measure }),
+  setAuditCaptureRate: (zoneId, rate) => set((s) => ({ auditCaptureRates: { ...s.auditCaptureRates, [zoneId]: rate } })),
+  setAuditCaptureRates: (zoneIds, rate) => set((s) => ({ auditCaptureRates: {
+    ...s.auditCaptureRates, ...Object.fromEntries(zoneIds.map((id) => [id, rate])),
+  } })),
   setView: (view) => set({ view }),
   setHover: (hover) => set({ hover }),
   setWhatif: (p) => set((s) => ({ whatif: { ...s.whatif, ...p } })),

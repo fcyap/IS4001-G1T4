@@ -1,5 +1,6 @@
+import { useEffect, useMemo } from "react";
 import { useData } from "../lib/data";
-import { monthLabel, useStore, zoneName, type Mode } from "../lib/store";
+import { isAuditMeasure, monthLabel, useStore, zoneName, type Mode } from "../lib/store";
 
 const MODES: { id: Mode; label: string; hint: string }[] = [
   { id: "overview", label: "Today", hint: "How the building runs now" },
@@ -12,9 +13,17 @@ export default function TopBar() {
   const scope = useStore((s) => s.scope);
   const select = useStore((s) => s.select);
   const mode = useStore((s) => s.mode);
+  const measure = useStore((s) => s.measure);
   const setMode = useStore((s) => s.setMode);
   const month = useStore((s) => s.month);
   const setMonth = useStore((s) => s.setMonth);
+  const auditView = mode === "overview" && isAuditMeasure(measure);
+  const auditMonths = useMemo(() => [...new Set((meta?.energy_audit ?? []).flatMap((zone) => Object.keys(zone.monthly)))].sort(), [meta?.energy_audit]);
+  const availableMonths = auditView ? auditMonths : meta?.months ?? [];
+
+  useEffect(() => {
+    if (month && !availableMonths.includes(month)) setMonth(null);
+  }, [month, availableMonths, setMonth]);
 
   return (
     <header className="topbar">
@@ -51,8 +60,8 @@ export default function TopBar() {
           <label className="field">
             <span>Period</span>
             <select value={month ?? ""} onChange={(e) => setMonth(e.target.value || null)}>
-              <option value="">All Sensor Months ({meta?.months.length ?? "…"})</option>
-              {meta?.months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+              <option value="">{auditView ? "Annual baseline (Jul 2018–Jun 2019)" : `All Sensor Months (${availableMonths.length || "…"})`}</option>
+              {availableMonths.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
             </select>
           </label>
         )}

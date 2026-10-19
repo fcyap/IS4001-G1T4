@@ -34,6 +34,17 @@ const COMFY_RAMP = ["#3a4658", "#3c5a58", "#468a6c", "#5fb487", "#86e0ae"];
 const AC_RAMP = ["#283c58", "#55618a", "#b0709a", "#f0924f"];
 const SAVED_RAMP = ["#22384a", "#2f6a63", "#4fae8a", "#a6f0c8"];
 const EXTRA_RAMP = ["#22384a", "#6a4a4a", "#c0603f", "#ef5b55"];
+const AUDIT_RAMP = ["#53677e", "#8c6540", "#bd8245", "#f1b45e"];
+
+export const AUDIT_CLASS_COLORS = {
+  "Preventable Waste": "#4389c8",
+  "Critical Standby": "#c95f62",
+  Mixed: "#9a78c2",
+} as const;
+
+export function auditValueColor(value: number, max: number): string {
+  return ramp(AUDIT_RAMP, Math.sqrt(value / Math.max(max, 1)));
+}
 
 /** PMV: diverging around the comfort band; -2 deep blue ... 0 sage ... +2 amber. */
 export function pmvColor(pmv: number | null | undefined): string {

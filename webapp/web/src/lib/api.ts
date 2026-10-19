@@ -10,6 +10,35 @@ export interface ZoneInfo {
   baseline: { model: string; cv_rmse_pct: number; nmbe_pct: number; r2: number; passes: boolean } | null;
 }
 
+export type AuditClassification = "Preventable Waste" | "Critical Standby" | "Mixed";
+export interface EnergyAuditCircuit {
+  circuit_id: string;
+  type: string;
+  classification: Exclude<AuditClassification, "Mixed">;
+  unocc_mean_kw: number | null; baseload_kw: number;
+  annual_unocc_hours: number; annual_expected_unocc_hours: number;
+  annual_surplus_kwh: number;
+  annual_cost_thb: number;
+  monthly: Record<string, EnergyAuditPeriod>;
+}
+export interface EnergyAuditPeriod {
+  surplus_kwh: number | null;
+  cost_thb: number | null;
+  unocc_mean_kw: number | null;
+  unocc_hours: number; expected_unocc_hours: number;
+  energy_coverage_pct: number; load_coverage_pct: number;
+}
+export interface EnergyAuditZone {
+  id: string; floor: number; zone: string;
+  classification: AuditClassification;
+  circuit_count: number; preventable_count: number; critical_count: number;
+  annual_surplus_kwh: number; annual_cost_thb: number; unocc_mean_kw: number | null;
+  annual_unocc_hours: number; annual_expected_unocc_hours: number;
+  annual_energy_coverage_pct: number; annual_load_coverage_pct: number;
+  monthly: Record<string, EnergyAuditPeriod>;
+  circuits: EnergyAuditCircuit[];
+}
+
 export interface HeatCell {
   floor: number; zone: string; month: string; periods: number;
   pct_too_cool: number; pct_comfortable: number; pct_too_warm: number; pct_humid: number;
@@ -29,6 +58,7 @@ export interface MonthlyRec {
 export interface Meta {
   floors: number[];
   zones: ZoneInfo[];
+  energy_audit: EnergyAuditZone[];
   months: string[];
   office_days: string[];
   rules: { raise_step_c: number; max_raise_c: number; whatif_limit_c: number; raise_if_too_cool: number; too_warm_tolerance: number; office_periods_per_year: number };

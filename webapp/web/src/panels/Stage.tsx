@@ -1,11 +1,11 @@
 import { useEffect } from "react";
-import { MEASURES } from "../lib/colors";
+import { AUDIT_CLASS_COLORS, auditValueColor, MEASURES } from "../lib/colors";
 import { useData } from "../lib/data";
 import { dateLabel } from "../lib/format";
-import { useStore, type Measure } from "../lib/store";
+import { isAuditMeasure, monthLabel, useStore, type AuditMeasure, type MapMeasure, type Measure } from "../lib/store";
 
-const PICKS: Record<string, Measure[]> = {
-  overview: ["too_cool", "comfortable", "pmv", "ac"],
+const PICKS: Record<string, MapMeasure[]> = {
+  overview: ["too_cool", "comfortable", "pmv", "ac", "audit_load"],
   whatif: ["saved", "too_cool", "comfortable", "pmv", "ac"],
   replay: ["pmv", "ac"],
 };
@@ -26,6 +26,31 @@ function Legend({ measure }: { measure: Measure }) {
         <span><i className="k-inspect" />Check First</span>
         <span><i className="k-breach" />Over Guardrail</span>
       </div>
+    </div>
+  );
+}
+
+function AuditLegend({ measure }: { measure: AuditMeasure }) {
+  const { meta } = useData();
+  const month = useStore((s) => s.month);
+  const values = (meta?.energy_audit ?? []).map((z) => measure === "audit_load"
+    ? month ? z.monthly[month]?.unocc_mean_kw : z.unocc_mean_kw
+    : month ? measure === "audit_cost" ? z.monthly[month]?.cost_thb : z.monthly[month]?.surplus_kwh
+      : measure === "audit_cost" ? z.annual_cost_thb : z.annual_surplus_kwh).filter((v): v is number => v !== null);
+  const max = Math.max(...values, 1);
+  const unit = measure === "audit_load" ? month ? `kW · ${monthLabel(month)}` : "kW · clean-year average"
+    : measure === "audit_cost" ? month ? `THB · ${monthLabel(month)}` : "THB · Jul 2018–Jun 2019"
+      : month ? `kWh · ${monthLabel(month)}` : "kWh · Jul 2018–Jun 2019";
+  return (
+    <div className="legend">
+      {measure === "audit_classification" ? <div className="legend-keys audit-keys">
+        {Object.entries(AUDIT_CLASS_COLORS).map(([label, color]) => <span key={label}><i style={{ background: color }} />{label}</span>)}
+        <span><i className="k-nodata" />No circuit data</span>
+      </div> : <>
+        <div className="legend-bar" style={{ background: `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map((t) => auditValueColor(max * t * t, max)).join(",")})` }} />
+        <div className="legend-ends"><span>0 {unit}</span><span>{Math.round(max).toLocaleString()} {unit}</span></div>
+        <div className="legend-keys"><span><i className="k-nodata" />No circuit data</span><span>{month ? `Recorded values for ${monthLabel(month)}` : measure === "audit_load" ? "Mean after-hours circuit load" : "Annual preventable opportunity"}</span></div>
+      </>}
     </div>
   );
 }
@@ -106,23 +131,32 @@ export default function Stage() {
   const setView = useStore((s) => s.setView);
   const scope = useStore((s) => s.scope);
   const { error } = useData();
-  const picks = PICKS[mode];
+  const picks = PICKS[mode] ?? [];
   const active = picks.includes(measure) ? measure : picks[0];
+
+  useEffect(() => {
+    if (active && active !== measure) setMeasure(active);
+  }, [active, measure, setMeasure]);
 
   return (
     <>
       <div className="stage-tl">
         <label className="field">
           <span>Colour Zones by</span>
-          <select value={active} onChange={(e) => setMeasure(e.target.value as Measure)}>
-            {picks.map((p) => <option key={p} value={p}>{mode === "replay" ? REPLAY_LABEL[p] : MEASURES[p].label}</option>)}
+          <select value={active} onChange={(e) => setMeasure(e.target.value as MapMeasure)}>
+            {picks.map((p) => <option key={p} value={p}>{isAuditMeasure(p)
+              ? p === "audit_load" ? "After-hours Load"
+                : p === "audit_kwh" ? "Preventable Energy"
+                  : "Waste Status"
+              : mode === "replay" ? REPLAY_LABEL[p as Measure] : MEASURES[p as Measure].label}</option>)}
           </select>
         </label>
       </div>
-      {mode !== "replay" && <div className="stage-bl"><Legend measure={active} /></div>}
+      {isAuditMeasure(active) ? <div className="stage-bl"><AuditLegend measure={active} /></div>
+        : mode !== "replay" && <div className="stage-bl"><Legend measure={active as Measure} /></div>}
       {(view === "plan" || scope.floor !== undefined) && <FloorPicker />}
       <div className="stage-tr">
-        {mode === "replay" && <Legend measure={active} />}
+        {mode === "replay" && <Legend measure={active as Measure} />}
         <div className="segmented">
           <button className={view === "3d" ? "on" : ""} onClick={() => setView("3d")}>3D</button>
           <button className={view === "plan" ? "on" : ""} onClick={() => setView("plan")}>Plan</button>
@@ -133,7 +167,7 @@ export default function Stage() {
         {mode === "replay" && <Player />}
         <p className="caption">
           {scope.floor === undefined ? "Click a floor to lift it out of the stack. " : "Click a zone for its detail. Esc goes back up. "}
-          Zone plans traced from the CU-BEMS paper (Pipattanasomporn et al., 2020, Fig. 2); facade is schematic. Data is a historical replay of CU-BEMS (2018–19), not a live feed.
+          Zone plans traced from the CU-BEMS paper (Pipattanasomporn et al., 2020, Fig. 2); facade is schematic. Waste status and after-hours load summarize Question A circuits by zone; comfort and AC layers use historical CU-BEMS data (2018–19).
         </p>
       </div>
     </>
