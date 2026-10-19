@@ -33,6 +33,7 @@ const COOL_RAMP = ["#3a4658", "#3a5878", "#3b74ad", "#3d93e0", "#5cb6ff"];
 const COMFY_RAMP = ["#3a4658", "#3c5a58", "#468a6c", "#5fb487", "#86e0ae"];
 const AC_RAMP = ["#283c58", "#55618a", "#b0709a", "#f0924f"];
 const SAVED_RAMP = ["#22384a", "#2f6a63", "#4fae8a", "#a6f0c8"];
+const EXTRA_RAMP = ["#22384a", "#6a4a4a", "#c0603f", "#ef5b55"];
 
 /** PMV: diverging around the comfort band; -2 deep blue ... 0 sage ... +2 amber. */
 export function pmvColor(pmv: number | null | undefined): string {
@@ -53,6 +54,8 @@ export const MEASURES: Record<Measure, MeasureDef> = {
     color: pmvColor, legend: ["#2f6fb4", C.cool, C.comfy, C.warm, "#d9542f"] },
   ac: { label: "Mean AC Power", unit: "kW", domain: [0, 40],
     color: (v) => ramp(AC_RAMP, v / 40), legend: AC_RAMP },
-  saved: { label: "AC Energy Saved", unit: "kWh", domain: [0, 8000],
-    color: (v) => ramp(SAVED_RAMP, Math.sqrt(v / 8000)), legend: SAVED_RAMP },
+  // Negative = a lower setpoint using extra AC: shaded towards amber/red instead of green.
+  saved: { label: "AC Energy Saved", unit: "kWh", domain: [-8000, 8000],
+    color: (v) => v < 0 ? ramp(EXTRA_RAMP, Math.sqrt(-v / 8000)) : ramp(SAVED_RAMP, Math.sqrt(v / 8000)),
+    legend: [...EXTRA_RAMP].reverse().concat(SAVED_RAMP.slice(1)) },
 };

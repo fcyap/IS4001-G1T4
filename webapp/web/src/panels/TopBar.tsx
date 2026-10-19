@@ -3,7 +3,7 @@ import { monthLabel, useStore, zoneName, type Mode } from "../lib/store";
 
 const MODES: { id: Mode; label: string; hint: string }[] = [
   { id: "overview", label: "Today", hint: "How the building runs now" },
-  { id: "whatif", label: "Setpoint What-If", hint: "Raise setpoints and see comfort and AC energy change" },
+  { id: "whatif", label: "Setpoint What-If", hint: "Raise or lower setpoints and see comfort and AC energy change" },
   { id: "replay", label: "Replay a Day", hint: "Step through one office day, 15 minutes at a time" },
 ];
 

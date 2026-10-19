@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { api, type Summary, type ZoneInfo, type ZoneResult } from "../lib/api";
 import { C, MEASURES } from "../lib/colors";
 import { acKw, replayValue, rollup, useData, useFetch, zoneValue } from "../lib/data";
-import { kwh, n0, n1, pmvTxt } from "../lib/format";
+import { kwh, n0, n1, pmvTxt, signedC } from "../lib/format";
 import { monthLabel, scenarioBody, useStore, zoneId, zoneName } from "../lib/store";
 import { HeatMap, Histogram, LoadChart, Sparkline } from "./Charts";
 
@@ -135,17 +135,19 @@ function WhatIf({ results, zones }: { results: ZoneResult[]; zones: ZoneInfo[] }
   const override = zone ? whatif.overrides[zone.id] : undefined;
   const nOverrides = Object.keys(whatif.overrides).length;
   const rules = meta?.rules;
+  const limit = rules?.whatif_limit_c ?? 5;
+  const extra = b.saved_kwh < 0;          // a lower setpoint costs AC energy instead of saving it
 
   return (
     <Section title="Setpoint What-If" aside={nOverrides ? <button className="link" onClick={() => setWhatif({ overrides: {} })}>Clear {nOverrides} Zone Override{nOverrides > 1 ? "s" : ""}</button> : null}>
       <div className="segmented wide">
         <button className={whatif.mode === "rule" ? "on" : ""} onClick={() => setWhatif({ mode: "rule" })}>Rule Recommendation</button>
-        <button className={whatif.mode === "global" ? "on" : ""} onClick={() => setWhatif({ mode: "global" })}>Same Raise Everywhere</button>
+        <button className={whatif.mode === "global" ? "on" : ""} onClick={() => setWhatif({ mode: "global" })}>Same Change Everywhere</button>
       </div>
       {whatif.mode === "global" ? (
         <label className="slider">
-          <span>Raise Every Zone by <b>+{whatif.globalC.toFixed(1)} °C</b></span>
-          <input type="range" min={0} max={3} step={0.5} value={whatif.globalC} onChange={(e) => setWhatif({ globalC: +e.target.value })} />
+          <span>Change Every Zone’s Setpoint by <b>{signedC(whatif.globalC)}</b></span>
+          <input type="range" min={-limit} max={limit} step={0.5} value={whatif.globalC} onChange={(e) => setWhatif({ globalC: +e.target.value })} />
         </label>
       ) : (
         <p className="note">
@@ -156,8 +158,8 @@ function WhatIf({ results, zones }: { results: ZoneResult[]; zones: ZoneInfo[] }
 
       {zone && zone.simulated && (
         <label className="slider override">
-          <span>This Zone: <b>{override !== undefined ? `+${override.toFixed(1)} °C (override)` : zr ? `+${n1(zr.raise_c)} °C from the ${whatif.mode === "rule" ? "rule" : "building setting"}` : "–"}</b></span>
-          <input type="range" min={0} max={3} step={0.5} value={override ?? zr?.raise_c ?? 0}
+          <span>This Zone: <b>{override !== undefined ? `${signedC(override)} (override)` : zr ? `${signedC(zr.raise_c)} from the ${whatif.mode === "rule" ? "rule" : "building setting"}` : "–"}</b></span>
+          <input type="range" min={-limit} max={limit} step={0.5} value={override ?? zr?.raise_c ?? 0}
             onChange={(e) => setOverride(zone.id, +e.target.value)} />
           {override !== undefined && <button className="link" onClick={() => setOverride(zone.id, null)}>Use the {whatif.mode === "rule" ? "Rule" : "Building Setting"} Again</button>}
         </label>
@@ -166,16 +168,19 @@ function WhatIf({ results, zones }: { results: ZoneResult[]; zones: ZoneInfo[] }
 
       <div className="result">
         <div>
-          <span className="stat-label">AC Energy Saved, {month ? monthLabel(month) : "Sensor Months"}</span>
-          <span className="big">{kwh(b.saved_kwh)}</span>
-          <span className="sub">{n1(b.ac_kwh ? (b.saved_kwh / b.ac_kwh) * 100 : 0)} % of this AC, about {kwh(b.annual_kwh_saved)} a year</span>
+          <span className="stat-label">{extra ? "Extra AC Energy" : "AC Energy Saved"}, {month ? monthLabel(month) : "Sensor Months"}</span>
+          <span className={`big ${extra ? "bad" : ""}`}>{kwh(Math.abs(b.saved_kwh))}</span>
+          <span className="sub">{n1(b.ac_kwh ? (Math.abs(b.saved_kwh) / b.ac_kwh) * 100 : 0)} % {extra ? "more" : "of"} this AC, about {kwh(Math.abs(b.annual_kwh_saved ?? 0))} a year</span>
         </div>
         <div>
           <span className="stat-label">Over the Guardrail</span>
           <span className={`big ${breaches.length ? "bad" : ""}`}>{breaches.length}</span>
-          <span className="sub">{breaches.length ? `zones too warm or too humid in at least one month: ${breaches.map((z) => z.id.replace(":", " ")).join(", ")}` : "no zone goes too warm or too humid in any month"}</span>
+          <span className="sub">{breaches.length ? `zones outside the comfort guardrail in at least one month: ${breaches.map((z) => z.id.replace(":", " ")).join(", ")}` : "no zone goes too warm, too humid or colder than today in any month"}</span>
         </div>
       </div>
+      {Math.abs(whatif.mode === "global" ? whatif.globalC : 0) > (rules?.max_raise_c ?? 3) || Object.values(whatif.overrides).some((c) => Math.abs(c) > (rules?.max_raise_c ?? 3))
+        ? <p className="note">Beyond ±{rules?.max_raise_c ?? 3} °C the energy and moisture slopes are extrapolated from smaller changes, so treat these figures as rough. A lower setpoint’s extra AC is capped at each zone’s highest metered power.</p>
+        : null}
       {!scope.zone && <p className="note">Zones on the check-first list stay at today’s setpoint unless you override them. Annual figures scale the sensor months to {n0(meta?.rules.office_periods_per_year ? meta.rules.office_periods_per_year / 4 : 1944)} office hours a year.</p>}
     </Section>
   );
@@ -267,7 +272,7 @@ function Alerts({ zones, results }: { zones: ZoneInfo[]; results: ZoneResult[] }
   if (mode === "whatif")
     for (const r of results.filter((z) => z.breach.length))
       alerts.push({ id: r.id, level: "red", title: `${r.id.replace(":", " ")} would go ${r.breach.join(" and ")}`,
-        detail: `Fails the guardrail in ${r.breach_months.length} month${r.breach_months.length > 1 ? "s" : ""} (${r.breach_months.map(monthLabel).join(", ")}). Roll this zone back a step in those months.` });
+        detail: `Fails the guardrail in ${r.breach_months.length} month${r.breach_months.length > 1 ? "s" : ""} (${r.breach_months.map(monthLabel).join(", ")}). Move this zone a step back towards today’s setpoint in those months.` });
   for (const z of zones.filter((z) => z.inspect))
     alerts.push({ id: z.id, level: "amber", title: `${z.id.replace(":", " ")}: check before adjusting`, detail: z.inspect! });
   for (const z of zones.filter((z) => z.baseline && !z.baseline.passes))
@@ -318,7 +323,8 @@ function Load() {
         : <>
           <LoadChart data={data} />
           <p className="note">
-            The baseline predicts normal AC from outdoor weather, hour, weekday and holidays, trained Jul 2018 – Jun 2019.
+            The baseline predicts normal AC from outdoor weather (including sun and the past day’s heat), the zone’s
+            lighting and plug use, hour, weekday and holidays. Trained Jul 2018 – Jun 2019, with closures and outages left out.
             {data.test_actual_kwh !== undefined && ` Test period: ${kwh(data.test_actual_kwh)} actual against ${kwh(data.test_baseline_kwh)} predicted.`}
           </p>
         </>}
@@ -354,7 +360,7 @@ function ZoneDetailSection({ zone, result }: { zone: ZoneInfo; result?: ZoneResu
   const body = scenarioBody({ mode: mode === "replay" ? "overview" : mode, month, whatif });
   const { data } = useFetch(`zone|${zone.id}|${JSON.stringify(body)}`, (sig) => api.zone(zone.floor, zone.zone, body, sig));
   const recs = (meta?.monthly ?? []).filter((r) => r.floor === zone.floor && r.zone === zone.zone);
-  const afterLabel = mode === "whatif" && result && result.raise_max > 0 ? `+${n1(result.raise_c)} °C` : null;
+  const afterLabel = mode === "whatif" && result && (result.raise_max > 0 || result.raise_min < 0) ? signedC(result.raise_c) : null;
   return (
     <>
       {zone.kw_per_c !== null && (

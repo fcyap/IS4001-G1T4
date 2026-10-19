@@ -31,7 +31,7 @@ export interface Meta {
   zones: ZoneInfo[];
   months: string[];
   office_days: string[];
-  rules: { raise_step_c: number; max_raise_c: number; raise_if_too_cool: number; too_warm_tolerance: number; office_periods_per_year: number };
+  rules: { raise_step_c: number; max_raise_c: number; whatif_limit_c: number; raise_if_too_cool: number; too_warm_tolerance: number; office_periods_per_year: number };
   heatmap: HeatCell[];
   monthly: MonthlyRec[];
 }
@@ -46,7 +46,7 @@ export interface Summary {
 }
 
 export interface ZoneResult {
-  id: string; raise_c: number; raise_max: number;
+  id: string; raise_c: number; raise_max: number; raise_min: number;
   mean_out_temp_c: number; before: Summary; after: Summary; breach: string[]; breach_months: string[];
 }
 

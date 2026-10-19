@@ -18,15 +18,18 @@ store = load()
 sim = Simulator(store)
 app = FastAPI(title="Question B building view")
 
+# Manual what-if range, either way. The rule's own cap (qc.MAX_RAISE_C) still applies to its recommendations.
+WHATIF_LIMIT_C = 5.0
+
 
 class WhatIf(BaseModel):
     mode: str = Field("global", pattern="^(global|rule)$")
-    global_c: float = Field(0.0, ge=0, le=qc.MAX_RAISE_C)
+    global_c: float = Field(0.0, ge=-WHATIF_LIMIT_C, le=WHATIF_LIMIT_C)
     overrides: dict[str, float] = {}
     months: list[str] = []
 
     def scenario(self) -> Scenario:
-        clean = {k: min(max(v, 0.0), qc.MAX_RAISE_C) for k, v in self.overrides.items()}
+        clean = {k: min(max(v, -WHATIF_LIMIT_C), WHATIF_LIMIT_C) for k, v in self.overrides.items()}
         return Scenario.build(self.mode, self.global_c, clean)
 
 
@@ -37,7 +40,7 @@ def meta():
         "zones": store.registry,
         "months": store.months,
         "office_days": store.office_days,
-        "rules": {"raise_step_c": qc.RAISE_STEP_C, "max_raise_c": qc.MAX_RAISE_C,
+        "rules": {"raise_step_c": qc.RAISE_STEP_C, "max_raise_c": qc.MAX_RAISE_C, "whatif_limit_c": WHATIF_LIMIT_C,
                   "raise_if_too_cool": qc.RAISE_IF_TOO_COOL_SHARE, "too_warm_tolerance": qc.TOO_WARM_TOLERANCE,
                   "office_periods_per_year": qc.OFFICE_PERIODS_PER_YEAR},
         "heatmap": records(store.heatmap),
