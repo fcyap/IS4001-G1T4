@@ -137,7 +137,7 @@ select.mini { padding: 3px 24px 3px 8px; font-size: var(--t-xs); }
 .link { background: none; border: 0; padding: 0; color: var(--cool); font-size: var(--t-s); }
 .link:hover { text-decoration: underline; }
 
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 16px 18px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 16px 18px; margin-bottom: 20px; }
 .stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .stat-label { font-size: var(--t-xs); color: var(--muted); display: block; }
 .stat-value { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }

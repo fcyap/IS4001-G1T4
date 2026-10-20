@@ -53,7 +53,7 @@ function ScopeHeader({ zones }: { zones: ZoneInfo[] }) {
 }
 
 // --- Occupant Comfort Section ----------------------------------------------------------------
-function OccupantComfortSection({ results }: { results: ZoneResult[] }) {
+function OccupantComfortSection({ results, zones, zone }: { results: ZoneResult[]; zones: ZoneInfo[]; zone: ZoneInfo | null }) {
   const mode = useStore((s) => s.mode);
   const a = rollup(results, false);
   const b = rollup(results, true);
@@ -61,13 +61,16 @@ function OccupantComfortSection({ results }: { results: ZoneResult[] }) {
   if (!results.length) return null;
 
   return (
-    <Section title="Occupant Comfort">
+    <Section title="Occupant Comfort" collapsible={true} defaultOpen={true}>
       <div className="stats">
         <Stat label="Indoor Air" value={n1(a.mean_temp_c)} after={w ? n1(b.mean_temp_c) : null} unit="°C" hint="Mean zone air temperature in office hours" />
         <Stat label="Outdoor Air" value={n1(a.mean_out_temp_c)} unit="°C" hint="Bangkok, Open-Meteo, same office hours" />
         <Stat label="Too Cool" value={n0(a.pct_too_cool)} after={w ? n0(b.pct_too_cool) : null} unit="% of time" hint="Share of office time with PMV below −0.5" />
         <Stat label="Comfortable" value={n0(a.pct_comfortable)} after={w ? n0(b.pct_comfortable) : null} unit="% of time" hint="Share of office time with PMV within ±0.5" />
       </div>
+      <ComfortMix results={results} />
+      {zone && zone.status === "data" && <ZoneDetailSection zone={zone} result={results[0]} />}
+      <Heat zones={zones} />
     </Section>
   );
 }
@@ -103,7 +106,7 @@ function EnergySection({ results }: { results: ZoneResult[] }) {
   }
 
   return (
-    <Section title="Energy">
+    <Section title="Energy" collapsible={true} defaultOpen={true}>
       <div className="stats">
         <Stat label={`AC Energy, ${month ? monthLabel(month) : "All Months"}`} value={kwh(a.ac_kwh)}
           after={w ? kwh(a.ac_kwh - b.saved_kwh) : null} hint="Metered AC in office hours, zones with sensors" />
@@ -112,6 +115,7 @@ function EnergySection({ results }: { results: ZoneResult[] }) {
             hint={`Energy Use Intensity for ${scope.floor === undefined ? 'whole building (11,700 m²)' : `floor ${scope.floor} (${Math.round(FLOOR_AREA_M2)} m²)`}`} />
         )}
       </div>
+      <Load />
     </Section>
   );
 }
@@ -151,7 +155,7 @@ function ComfortMix({ results }: { results: ZoneResult[] }) {
         ))}
       </div>
       <p className="note">The three shares add up to 100 % of office time (PMV comfort band −0.5 to +0.5).</p>
-      <p className="note">
+      <p className="note" style={{ marginBottom: "20px" }}>
         Humid (RH above 65 %): {n0(a.pct_humid)} % of office time{mode === "whatif" ? `, ${n0(b.pct_humid)} % after` : ""}.
         Mean PMV {pmvTxt(a.mean_pmv)}{mode === "whatif" ? ` → ${pmvTxt(b.mean_pmv)}` : ""}.
       </p>
@@ -178,7 +182,7 @@ function WhatIf({ results, zones }: { results: ZoneResult[]; zones: ZoneInfo[] }
   const extra = b.saved_kwh < 0;          // a lower setpoint costs AC energy instead of saving it
 
   return (
-    <Section title="Setpoint What-If" aside={nOverrides ? <button className="link" onClick={() => setWhatif({ overrides: {} })}>Clear {nOverrides} Zone Override{nOverrides > 1 ? "s" : ""}</button> : null}>
+    <Section title="Setpoint What-If" collapsible={true} defaultOpen={true} aside={nOverrides ? <button className="link" onClick={() => setWhatif({ overrides: {} })}>Clear {nOverrides} Zone Override{nOverrides > 1 ? "s" : ""}</button> : null}>
       <div className="segmented wide">
         <button className={whatif.mode === "rule" ? "on" : ""} onClick={() => setWhatif({ mode: "rule" })}>Rule Recommendation</button>
         <button className={whatif.mode === "global" ? "on" : ""} onClick={() => setWhatif({ mode: "global" })}>Same Change Everywhere</button>
@@ -290,7 +294,7 @@ function ZoneGrid({ zones, measureOverride, onZoneSelect }: { zones: ZoneInfo[];
     : measure === "audit_load" ? "After-hours Load by Zone"
       : measure === "audit_kwh" ? "Preventable Energy by Zone" : "Zones";
   return (
-    <Section title={zoneTitle} aside={<span className="aside">{isAuditMeasure(measure) ? auditTitle : mode === "replay" ? (m === "ac" ? "AC Power Now" : "PMV Now") : MEASURES[m].label}</span>}>
+    <Section title={zoneTitle} collapsible={true} defaultOpen={true} aside={<span className="aside">{isAuditMeasure(measure) ? auditTitle : mode === "replay" ? (m === "ac" ? "AC Power Now" : "PMV Now") : MEASURES[m].label}</span>}>
       <div className="grid">
         {floors.map((f) => (
           <div className="grid-row" key={f}>
@@ -353,7 +357,7 @@ function Alerts({ zones, results }: { zones: ZoneInfo[]; results: ZoneResult[] }
   if (mode === "whatif")
     for (const r of results.filter((z) => z.breach.length))
       alerts.push({ id: r.id, level: "red", title: `${r.id.replace(":", " ")} would go ${r.breach.join(" and ")}`,
-        detail: `Fails the guardrail in ${r.breach_months.length} month${r.breach_months.length > 1 ? "s" : ""} (${r.breach_months.map(monthLabel).join(", ")}). Move this zone a step back towards today’s setpoint in those months.` });
+        detail: `Fails the guardrail in ${r.breach_months.length} month${r.breach_months.length > 1 ? "s" : ""} (${r.breach_months.map(monthLabel).join(", ")}). Move this zone a step back towards today's setpoint in those months.` });
   for (const z of zones.filter((z) => z.inspect))
     alerts.push({ id: z.id, level: "amber", title: `${z.id.replace(":", " ")}: check before adjusting`, detail: z.inspect! });
   for (const z of zones.filter((z) => z.baseline && !z.baseline.passes))
@@ -374,7 +378,7 @@ function Alerts({ zones, results }: { zones: ZoneInfo[]; results: ZoneResult[] }
   const urgent = alerts.filter((a) => a.level !== "grey");
   const model = alerts.filter((a) => a.level === "grey");
   return (
-    <Section title="Needs Attention" aside={<span className="aside">{alerts.length}</span>}>
+    <Section title="Needs Attention" collapsible={true} defaultOpen={true} aside={<span className="aside">{alerts.length}</span>}>
       <ul className="alerts">
         {urgent.map(item)}
         {model.length > 1 ? (
@@ -514,14 +518,10 @@ export default function SidePanel() {
           {mode === "whatif" && <WhatIf results={results} zones={zones} />}
 
           {/* Occupant Comfort Section */}
-          <OccupantComfortSection results={results} />
-          <ComfortMix results={results} />
-          {zone && zone.status === "data" && <ZoneDetailSection zone={zone} result={results[0]} />}
-          <Heat zones={zones} />
+          <OccupantComfortSection results={results} zones={zones} zone={zone} />
 
           {/* Energy Section */}
           <EnergySection results={results} />
-          <Load />
         </>}
       </>}
       {/* Zones and Alerts at the bottom */}

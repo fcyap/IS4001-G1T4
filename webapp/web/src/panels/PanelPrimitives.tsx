@@ -1,10 +1,64 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
-export function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
+export function Section({ title, aside, children, collapsible = false, defaultOpen = true, className }: {
+  title: string;
+  aside?: ReactNode;
+  children: ReactNode;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
+  className?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  if (!collapsible) {
+    return (
+      <section className={`sec ${className || ""}`}>
+        <div className="sec-head"><h2>{title}</h2>{aside}</div>
+        {children}
+      </section>
+    );
+  }
+
   return (
-    <section className="sec">
-      <div className="sec-head"><h2>{title}</h2>{aside}</div>
-      {children}
+    <section className={`sec ${className || ""}`}>
+      <div
+        className="sec-head"
+        style={{ cursor: "pointer", userSelect: "none", position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between" }}
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1, minWidth: 0 }}>
+          <h2>{title}</h2>
+          {aside}
+        </div>
+        <button
+          style={{
+            flexShrink: 0,
+            width: "24px",
+            height: "24px",
+            borderRadius: "50%",
+            border: "none",
+            background: "rgba(220, 226, 234, 0.85)",
+            color: "#0a1628",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "16px",
+            fontWeight: "bold",
+            cursor: "pointer",
+            padding: 0,
+            marginLeft: "16px",
+            lineHeight: "1",
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsOpen(!isOpen);
+          }}
+          aria-label={isOpen ? "Collapse section" : "Expand section"}
+        >
+          <span style={{ display: "block", marginTop: "-1px" }}>{isOpen ? "−" : "+"}</span>
+        </button>
+      </div>
+      {isOpen && children}
     </section>
   );
 }
