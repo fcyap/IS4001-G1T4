@@ -55,11 +55,33 @@ function ScopeHeader({ zones }: { zones: ZoneInfo[] }) {
 // --- Readouts ---------------------------------------------------------------------------------
 function Readouts({ results }: { results: ZoneResult[] }) {
   const mode = useStore((s) => s.mode);
+  const scope = useStore((s) => s.scope);
   const month = useStore((s) => s.month);
   const a = rollup(results, false);
   const b = rollup(results, true);
   const w = mode === "whatif";
   if (!results.length) return <p className="empty">No sensor data in this selection.</p>;
+
+  // Calculate EUI (Energy Use Intensity) for building or floor level only
+  const BUILDING_AREA_M2 = 11700;
+  const FLOOR_AREA_M2 = BUILDING_AREA_M2 / 7;
+  const OFFICE_HOURS_PER_YEAR = 2080;
+  const showEUI = !scope.zone; // Show EUI for whole building or single floor, not for zones
+
+  let euiBefore: number | null = null;
+  let euiAfter: number | null = null;
+
+  if (showEUI && a.periods > 0) {
+    const area = scope.floor === undefined ? BUILDING_AREA_M2 : FLOOR_AREA_M2;
+    // Convert kWh to annual kWh, then divide by area
+    // periods are 15-min intervals, so divide by 0.25 to get hours
+    const hoursInData = a.periods * 0.25;
+    const annualKwhBefore = (a.ac_kwh / hoursInData) * OFFICE_HOURS_PER_YEAR;
+    const annualKwhAfter = ((a.ac_kwh - b.saved_kwh) / hoursInData) * OFFICE_HOURS_PER_YEAR;
+    euiBefore = annualKwhBefore / area;
+    euiAfter = annualKwhAfter / area;
+  }
+
   return (
     <div className="stats">
       <Stat label="Indoor Air" value={n1(a.mean_temp_c)} after={w ? n1(b.mean_temp_c) : null} unit="°C" hint="Mean zone air temperature in office hours" />
@@ -67,6 +89,10 @@ function Readouts({ results }: { results: ZoneResult[] }) {
       <Stat label={`AC Energy, ${month ? monthLabel(month) : "All Months"}`} value={kwh(a.ac_kwh)}
         after={w ? kwh(a.ac_kwh - b.saved_kwh) : null} hint="Metered AC in office hours, zones with sensors" />
       <Stat label="Too Cool" value={n0(a.pct_too_cool)} after={w ? n0(b.pct_too_cool) : null} unit="% of time" hint="Share of office time with PMV below −0.5" />
+      {showEUI && euiBefore !== null && (
+        <Stat label="EUI (Annual)" value={n1(euiBefore)} after={w ? n1(euiAfter!) : null} unit="kWh/m²/year"
+          hint={`Energy Use Intensity for ${scope.floor === undefined ? 'whole building (11,700 m²)' : `floor ${scope.floor} (${Math.round(FLOOR_AREA_M2)} m²)`}`} />
+      )}
     </div>
   );
 }
