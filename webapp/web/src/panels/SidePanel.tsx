@@ -61,7 +61,7 @@ function OccupantComfortSection({ results, zones, zone }: { results: ZoneResult[
   if (!results.length) return null;
 
   return (
-    <Section title="Occupant Comfort" collapsible={true} defaultOpen={true}>
+    <Section title="Occupant Comfort" collapsible={true} defaultOpen={false}>
       <div className="stats">
         <Stat label="Indoor Air" value={n1(a.mean_temp_c)} after={w ? n1(b.mean_temp_c) : null} unit="°C" hint="Mean zone air temperature in office hours" />
         <Stat label="Outdoor Air" value={n1(a.mean_out_temp_c)} unit="°C" hint="Bangkok, Open-Meteo, same office hours" />
@@ -106,7 +106,7 @@ function EnergySection({ results }: { results: ZoneResult[] }) {
   }
 
   return (
-    <Section title="Energy" collapsible={true} defaultOpen={true}>
+    <Section title="Energy" collapsible={true} defaultOpen={false}>
       <div className="stats">
         <Stat label={`AC Energy, ${month ? monthLabel(month) : "All Months"}`} value={kwh(a.ac_kwh)}
           after={w ? kwh(a.ac_kwh - b.saved_kwh) : null} hint="Metered AC in office hours, zones with sensors" />
@@ -182,7 +182,7 @@ function WhatIf({ results, zones }: { results: ZoneResult[]; zones: ZoneInfo[] }
   const extra = b.saved_kwh < 0;          // a lower setpoint costs AC energy instead of saving it
 
   return (
-    <Section title="Setpoint What-If" collapsible={true} defaultOpen={true} aside={nOverrides ? <button className="link" onClick={() => setWhatif({ overrides: {} })}>Clear {nOverrides} Zone Override{nOverrides > 1 ? "s" : ""}</button> : null}>
+    <Section title="Setpoint What-If" collapsible={true} defaultOpen={false} aside={nOverrides ? <button className="link" onClick={() => setWhatif({ overrides: {} })}>Clear {nOverrides} Zone Override{nOverrides > 1 ? "s" : ""}</button> : null}>
       <div className="segmented wide">
         <button className={whatif.mode === "rule" ? "on" : ""} onClick={() => setWhatif({ mode: "rule" })}>Rule Recommendation</button>
         <button className={whatif.mode === "global" ? "on" : ""} onClick={() => setWhatif({ mode: "global" })}>Same Change Everywhere</button>
@@ -294,7 +294,7 @@ function ZoneGrid({ zones, measureOverride, onZoneSelect }: { zones: ZoneInfo[];
     : measure === "audit_load" ? "After-hours Load by Zone"
       : measure === "audit_kwh" ? "Preventable Energy by Zone" : "Zones";
   return (
-    <Section title={zoneTitle} collapsible={true} defaultOpen={true} aside={<span className="aside">{isAuditMeasure(measure) ? auditTitle : mode === "replay" ? (m === "ac" ? "AC Power Now" : "PMV Now") : MEASURES[m].label}</span>}>
+    <Section title={zoneTitle} collapsible={true} defaultOpen={false} aside={<span className="aside">{isAuditMeasure(measure) ? auditTitle : mode === "replay" ? (m === "ac" ? "AC Power Now" : "PMV Now") : MEASURES[m].label}</span>}>
       <div className="grid">
         {floors.map((f) => (
           <div className="grid-row" key={f}>
@@ -378,7 +378,7 @@ function Alerts({ zones, results }: { zones: ZoneInfo[]; results: ZoneResult[] }
   const urgent = alerts.filter((a) => a.level !== "grey");
   const model = alerts.filter((a) => a.level === "grey");
   return (
-    <Section title="Needs Attention" collapsible={true} defaultOpen={true} aside={<span className="aside">{alerts.length}</span>}>
+    <Section title="Needs Attention" collapsible={true} defaultOpen={false} aside={<span className="aside">{alerts.length}</span>}>
       <ul className="alerts">
         {urgent.map(item)}
         {model.length > 1 ? (

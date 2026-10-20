@@ -42,12 +42,13 @@ export function Section({ title, aside, children, collapsible = false, defaultOp
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: "16px",
-            fontWeight: "bold",
+            fontSize: "18px",
+            fontWeight: "normal",
             cursor: "pointer",
             padding: 0,
             marginLeft: "16px",
-            lineHeight: "1",
+            lineHeight: "0",
+            fontFamily: "monospace",
           }}
           onClick={(e) => {
             e.stopPropagation();
@@ -55,7 +56,7 @@ export function Section({ title, aside, children, collapsible = false, defaultOp
           }}
           aria-label={isOpen ? "Collapse section" : "Expand section"}
         >
-          <span style={{ display: "block", marginTop: "-1px" }}>{isOpen ? "−" : "+"}</span>
+          {isOpen ? "−" : "+"}
         </button>
       </div>
       {isOpen && children}
