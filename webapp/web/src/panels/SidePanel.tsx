@@ -52,15 +52,35 @@ function ScopeHeader({ zones }: { zones: ZoneInfo[] }) {
   );
 }
 
-// --- Readouts ---------------------------------------------------------------------------------
-function Readouts({ results }: { results: ZoneResult[] }) {
+// --- Occupant Comfort Section ----------------------------------------------------------------
+function OccupantComfortSection({ results }: { results: ZoneResult[] }) {
+  const mode = useStore((s) => s.mode);
+  const a = rollup(results, false);
+  const b = rollup(results, true);
+  const w = mode === "whatif";
+  if (!results.length) return null;
+
+  return (
+    <Section title="Occupant Comfort">
+      <div className="stats">
+        <Stat label="Indoor Air" value={n1(a.mean_temp_c)} after={w ? n1(b.mean_temp_c) : null} unit="°C" hint="Mean zone air temperature in office hours" />
+        <Stat label="Outdoor Air" value={n1(a.mean_out_temp_c)} unit="°C" hint="Bangkok, Open-Meteo, same office hours" />
+        <Stat label="Too Cool" value={n0(a.pct_too_cool)} after={w ? n0(b.pct_too_cool) : null} unit="% of time" hint="Share of office time with PMV below −0.5" />
+        <Stat label="Comfortable" value={n0(a.pct_comfortable)} after={w ? n0(b.pct_comfortable) : null} unit="% of time" hint="Share of office time with PMV within ±0.5" />
+      </div>
+    </Section>
+  );
+}
+
+// --- Energy Section ---------------------------------------------------------------------------
+function EnergySection({ results }: { results: ZoneResult[] }) {
   const mode = useStore((s) => s.mode);
   const scope = useStore((s) => s.scope);
   const month = useStore((s) => s.month);
   const a = rollup(results, false);
   const b = rollup(results, true);
   const w = mode === "whatif";
-  if (!results.length) return <p className="empty">No sensor data in this selection.</p>;
+  if (!results.length) return null;
 
   // Calculate EUI (Energy Use Intensity) for building or floor level only
   const BUILDING_AREA_M2 = 11700;
@@ -83,18 +103,16 @@ function Readouts({ results }: { results: ZoneResult[] }) {
   }
 
   return (
-    <div className="stats">
-      <Stat label="Indoor Air" value={n1(a.mean_temp_c)} after={w ? n1(b.mean_temp_c) : null} unit="°C" hint="Mean zone air temperature in office hours" />
-      <Stat label="Outdoor Air" value={n1(a.mean_out_temp_c)} unit="°C" hint="Bangkok, Open-Meteo, same office hours" />
-      <Stat label={`AC Energy, ${month ? monthLabel(month) : "All Months"}`} value={kwh(a.ac_kwh)}
-        after={w ? kwh(a.ac_kwh - b.saved_kwh) : null} hint="Metered AC in office hours, zones with sensors" />
-      <Stat label="Too Cool" value={n0(a.pct_too_cool)} after={w ? n0(b.pct_too_cool) : null} unit="% of time" hint="Share of office time with PMV below −0.5" />
-      <Stat label="Comfortable" value={n0(a.pct_comfortable)} after={w ? n0(b.pct_comfortable) : null} unit="% of time" hint="Share of office time with PMV within ±0.5" />
-      {showEUI && euiBefore !== null && (
-        <Stat label="EUI (Annual)" value={n1(euiBefore)} after={w ? n1(euiAfter!) : null} unit="kWh/m²/year"
-          hint={`Energy Use Intensity for ${scope.floor === undefined ? 'whole building (11,700 m²)' : `floor ${scope.floor} (${Math.round(FLOOR_AREA_M2)} m²)`}`} />
-      )}
-    </div>
+    <Section title="Energy">
+      <div className="stats">
+        <Stat label={`AC Energy, ${month ? monthLabel(month) : "All Months"}`} value={kwh(a.ac_kwh)}
+          after={w ? kwh(a.ac_kwh - b.saved_kwh) : null} hint="Metered AC in office hours, zones with sensors" />
+        {showEUI && euiBefore !== null && (
+          <Stat label="EUI (Annual)" value={n1(euiBefore)} after={w ? n1(euiAfter!) : null} unit="kWh/m²/year"
+            hint={`Energy Use Intensity for ${scope.floor === undefined ? 'whole building (11,700 m²)' : `floor ${scope.floor} (${Math.round(FLOOR_AREA_M2)} m²)`}`} />
+        )}
+      </div>
+    </Section>
   );
 }
 
@@ -491,17 +509,27 @@ export default function SidePanel() {
       <ScopeHeader zones={zones} />
       {auditLayer ? <QuestionAPanel zones={zones} measure={measure as AuditMeasure} scope={scope} auditZone={auditZone}
         detailMeasure={auditDetailMeasure} showPlanner={mode === "whatif"} /> : <>
-        {mode === "replay" ? <ReplayReadout zones={zones} /> : <Readouts results={results} />}
-        {mode === "whatif" && <WhatIf results={results} zones={zones} />}
-        {mode !== "replay" && <ComfortMix results={results} />}
+        {mode === "replay" ? <ReplayReadout zones={zones} /> : <>
+          {/* Setpoint What-If at the top in what-if mode */}
+          {mode === "whatif" && <WhatIf results={results} zones={zones} />}
+
+          {/* Occupant Comfort Section */}
+          <OccupantComfortSection results={results} />
+          <ComfortMix results={results} />
+          {zone && zone.status === "data" && <ZoneDetailSection zone={zone} result={results[0]} />}
+          <Heat zones={zones} />
+
+          {/* Energy Section */}
+          <EnergySection results={results} />
+          <Load />
+        </>}
       </>}
+      {/* Zones and Alerts at the bottom */}
       {!zone && !(mode === "whatif" && measure === "audit_load") && (auditLayer && measure === "audit_load" ? <>
         <ZoneGrid zones={zones} measureOverride="audit_load" onZoneSelect={setAuditDetailMeasure} />
         <ZoneGrid zones={zones} measureOverride="audit_classification" onZoneSelect={setAuditDetailMeasure} />
       </> : <ZoneGrid zones={zones} />)}
       {!auditLayer && <Alerts zones={zones} results={results} />}
-      {!auditLayer && zone && zone.status === "data" && <ZoneDetailSection zone={zone} result={results[0]} />}
-      {!auditLayer && <><Load /><Heat zones={zones} /></>}
     </div>
   );
 }
