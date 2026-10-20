@@ -89,6 +89,7 @@ function Readouts({ results }: { results: ZoneResult[] }) {
       <Stat label={`AC Energy, ${month ? monthLabel(month) : "All Months"}`} value={kwh(a.ac_kwh)}
         after={w ? kwh(a.ac_kwh - b.saved_kwh) : null} hint="Metered AC in office hours, zones with sensors" />
       <Stat label="Too Cool" value={n0(a.pct_too_cool)} after={w ? n0(b.pct_too_cool) : null} unit="% of time" hint="Share of office time with PMV below −0.5" />
+      <Stat label="Comfortable" value={n0(a.pct_comfortable)} after={w ? n0(b.pct_comfortable) : null} unit="% of time" hint="Share of office time with PMV within ±0.5" />
       {showEUI && euiBefore !== null && (
         <Stat label="EUI (Annual)" value={n1(euiBefore)} after={w ? n1(euiAfter!) : null} unit="kWh/m²/year"
           hint={`Energy Use Intensity for ${scope.floor === undefined ? 'whole building (11,700 m²)' : `floor ${scope.floor} (${Math.round(FLOOR_AREA_M2)} m²)`}`} />
