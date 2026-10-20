@@ -64,7 +64,14 @@ export function Section({ title, aside, children, collapsible = false, defaultOp
   );
 }
 
-export function Stat({ label, value, after, unit, hint }: { label: string; value: string; after?: string | null; unit?: string; hint?: string }) {
+export function Stat({ label, value, after, unit, hint, change }: {
+  label: string;
+  value: string;
+  after?: string | null;
+  unit?: string;
+  hint?: string;
+  change?: { value: number; type: 'pp' | 'pct'; isImprovement: boolean } | null;
+}) {
   return (
     <div className="stat" title={hint}>
       <span className="stat-label">{label}</span>
@@ -72,6 +79,23 @@ export function Stat({ label, value, after, unit, hint }: { label: string; value
         {after ? <><s>{value}</s><b>{after}</b></> : <b>{value}</b>}
         {unit && <small>{unit}</small>}
       </span>
+      {change && after && (
+        <span
+          className="stat-change"
+          style={{
+            display: "inline-block",
+            padding: "2px 6px",
+            borderRadius: "4px",
+            fontSize: "10px",
+            fontWeight: "600",
+            marginTop: "4px",
+            background: change.isImprovement ? "rgba(124, 200, 164, 0.2)" : "rgba(239, 91, 85, 0.2)",
+            color: change.isImprovement ? "#7cc8a4" : "#ef5b55",
+          }}
+        >
+          {change.value > 0 ? "+" : ""}{change.value.toFixed(1)}{change.type === 'pp' ? ' pp' : '%'}
+        </span>
+      )}
     </div>
   );
 }

@@ -63,10 +63,38 @@ function OccupantComfortSection({ results, zones, zone }: { results: ZoneResult[
   return (
     <Section title="Occupant Comfort" collapsible={true} defaultOpen={false}>
       <div className="stats">
-        <Stat label="Indoor Air" value={n1(a.mean_temp_c)} after={w ? n1(b.mean_temp_c) : null} unit="°C" hint="Mean zone air temperature in office hours" />
+        <Stat
+          label="Indoor Air"
+          value={n1(a.mean_temp_c)}
+          after={w ? n1(b.mean_temp_c) : null}
+          unit="°C"
+          hint="Mean zone air temperature in office hours"
+        />
         <Stat label="Outdoor Air" value={n1(a.mean_out_temp_c)} unit="°C" hint="Bangkok, Open-Meteo, same office hours" />
-        <Stat label="Too Cool" value={n0(a.pct_too_cool)} after={w ? n0(b.pct_too_cool) : null} unit="% of time" hint="Share of office time with PMV below −0.5" />
-        <Stat label="Comfortable" value={n0(a.pct_comfortable)} after={w ? n0(b.pct_comfortable) : null} unit="% of time" hint="Share of office time with PMV within ±0.5" />
+        <Stat
+          label="Too Cool"
+          value={n0(a.pct_too_cool)}
+          after={w ? n0(b.pct_too_cool) : null}
+          unit="% of time"
+          hint="Share of office time with PMV below −0.5"
+          change={w ? {
+            value: b.pct_too_cool - a.pct_too_cool,
+            type: 'pp',
+            isImprovement: b.pct_too_cool < a.pct_too_cool // Less time too cool is better
+          } : null}
+        />
+        <Stat
+          label="Comfortable"
+          value={n0(a.pct_comfortable)}
+          after={w ? n0(b.pct_comfortable) : null}
+          unit="% of time"
+          hint="Share of office time with PMV within ±0.5"
+          change={w ? {
+            value: b.pct_comfortable - a.pct_comfortable,
+            type: 'pp',
+            isImprovement: b.pct_comfortable > a.pct_comfortable // More time comfortable is better
+          } : null}
+        />
       </div>
       <ComfortMix results={results} />
       {zone && zone.status === "data" && <ZoneDetailSection zone={zone} result={results[0]} />}
@@ -108,11 +136,30 @@ function EnergySection({ results }: { results: ZoneResult[] }) {
   return (
     <Section title="Energy" collapsible={true} defaultOpen={false}>
       <div className="stats">
-        <Stat label={`AC Energy, ${month ? monthLabel(month) : "All Months"}`} value={kwh(a.ac_kwh)}
-          after={w ? kwh(a.ac_kwh - b.saved_kwh) : null} hint="Metered AC in office hours, zones with sensors" />
+        <Stat
+          label={`AC Energy, ${month ? monthLabel(month) : "All Months"}`}
+          value={kwh(a.ac_kwh)}
+          after={w ? kwh(a.ac_kwh - b.saved_kwh) : null}
+          hint="Metered AC in office hours, zones with sensors"
+          change={w && a.ac_kwh !== 0 ? {
+            value: ((b.saved_kwh / a.ac_kwh) * 100) * -1, // Negative because saved_kwh is positive when energy decreases
+            type: 'pct',
+            isImprovement: b.saved_kwh > 0 // Positive saved_kwh means energy reduction, which is good
+          } : null}
+        />
         {showEUI && euiBefore !== null && (
-          <Stat label="EUI (Annual)" value={n1(euiBefore)} after={w ? n1(euiAfter!) : null} unit="kWh/m²/year"
-            hint={`Energy Use Intensity for ${scope.floor === undefined ? 'whole building (11,700 m²)' : `floor ${scope.floor} (${Math.round(FLOOR_AREA_M2)} m²)`}`} />
+          <Stat
+            label="EUI (Annual)"
+            value={n1(euiBefore)}
+            after={w ? n1(euiAfter!) : null}
+            unit="kWh/m²/year"
+            hint={`Energy Use Intensity for ${scope.floor === undefined ? 'whole building (11,700 m²)' : `floor ${scope.floor} (${Math.round(FLOOR_AREA_M2)} m²)`}`}
+            change={w && euiBefore !== 0 ? {
+              value: ((euiAfter! - euiBefore) / euiBefore) * 100,
+              type: 'pct',
+              isImprovement: euiAfter! < euiBefore // Lower EUI is better
+            } : null}
+          />
         )}
       </div>
       <Load />
