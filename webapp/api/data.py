@@ -15,6 +15,7 @@ QN2_DIR = Path(__file__).resolve().parents[2] / "notebooks" / "qn2"
 QA_PATH = Path(__file__).resolve().parents[2] / "data" / "qn1_circuit_waste_and_classification.csv"
 QA_HOURLY_PATH = Path(__file__).resolve().parents[2] / "data" / "qn1_hourly_master_for_excel.csv"
 QA_HOLIDAYS_PATH = Path(__file__).resolve().parents[2] / "data" / "thai_holidays_18months.csv"
+QA_DYNAMIC_PATH = Path(__file__).resolve().parents[2] / "data" / "qn1_dynamic_baseload_matrix.csv"
 sys.path.insert(0, str(QN2_DIR))
 import qb_common as qc  # noqa: E402
 
@@ -85,6 +86,8 @@ def _energy_audit() -> list[dict]:
     circuits = pd.read_csv(QA_PATH)
     hourly = pd.read_csv(QA_HOURLY_PATH, parse_dates=["Date"])
     hourly["month"] = hourly["Date"].dt.strftime("%Y-%m")
+    hourly["dow"] = hourly["Date"].dt.dayofweek
+    hourly["hr"] = hourly["Date"].dt.hour
     holidays = set(pd.to_datetime(pd.read_csv(QA_HOLIDAYS_PATH)["Date"]).dt.date)
     dates = hourly["Date"]
     hourly["is_peak"] = (
@@ -98,16 +101,35 @@ def _energy_audit() -> list[dict]:
     hourly_by_month = list(hourly.groupby("month", sort=True))
     annual_months = {f"{year}-{month:02d}" for year, month in [(2018, m) for m in range(7, 13)] + [(2019, m) for m in range(1, 7)]}
 
+    dynamic_matrix = (
+        pd.read_csv(QA_DYNAMIC_PATH).set_index(["DayOfWeek", "Hour"])
+        if QA_DYNAMIC_PATH.exists()
+        else None
+    )
+    dyn_dict = (
+        {col: dynamic_matrix[col].to_dict() for col in dynamic_matrix.columns}
+        if dynamic_matrix is not None
+        else {}
+    )
+
     grouped = []
     for (floor, zone), rows in circuits.groupby(["floor", "zone"], sort=True):
         items = []
         for row in rows.itertuples():
             is_preventable = row.Classification == "Preventable Waste"
+            c_dict = dyn_dict.get(row.Circuit_ID, {})
             month_values = {}
             for month, frame in hourly_by_month:
                 unoccupied = frame.loc[frame["Is_Unoccupied"], row.Circuit_ID]
                 observed = unoccupied.dropna()
-                excess = (observed - float(row.Baseload_kW)).clip(lower=0) if is_preventable else observed.iloc[0:0]
+                if is_preventable and c_dict:
+                    sub_frame = frame.loc[observed.index]
+                    base_vals = [c_dict.get((d, h), float(row.Baseload_kW)) for d, h in zip(sub_frame["dow"], sub_frame["hr"])]
+                    excess = pd.Series((observed.values - np.array(base_vals)).clip(min=0.0), index=observed.index)
+                elif is_preventable:
+                    excess = (observed - float(row.Baseload_kW)).clip(lower=0)
+                else:
+                    excess = observed.iloc[0:0]
                 monthly_kwh = float(excess.sum())  # each row is one hour of mean kW
                 monthly_cost = float((excess * frame.loc[excess.index, "tariff_thb_per_kwh"]).sum())
                 monthly_mean = observed.mean()

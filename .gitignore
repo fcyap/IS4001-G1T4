@@ -20,6 +20,7 @@ data/qns2/baseline/floor*/*
 !data/qns2/baseline/floor*/predictions_occupied_hours.csv
 !data/qn1_hourly_master_for_excel.csv
 !data/qn1_circuit_waste_and_classification.csv
+!data/qn1_dynamic_baseload_matrix.csv
 !data/thai_holidays_18months.csv
 
 
