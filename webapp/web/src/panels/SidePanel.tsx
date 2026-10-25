@@ -1,14 +1,45 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Summary, type ZoneInfo, type ZoneResult } from "../lib/api";
 import { AUDIT_CLASS_COLORS, auditValueColor, C, MEASURES } from "../lib/colors";
 import { acKw, replayValue, rollup, useData, useFetch, zoneValue } from "../lib/data";
 import { kwh, n0, n1, pmvTxt, signedC } from "../lib/format";
-import { isAuditMeasure, monthLabel, scenarioBody, useStore, zoneId, zoneName, type AuditMeasure, type MapMeasure } from "../lib/store";
+import { isAuditMeasure, monthLabel, scenarioBody, scopeLabel, useStore, zoneId, zoneName, type AuditMeasure, type MapMeasure } from "../lib/store";
+import { zoneLabel, zoneUse } from "../lib/zones";
 import { HeatMap, Histogram, LoadChart, Sparkline } from "./Charts";
 import { Section, Stat } from "./PanelPrimitives";
+import Overview from "./Overview";
+import Plan from "./Plan";
 import QuestionAPanel from "./QuestionAPanel";
 
 // --- Header -----------------------------------------------------------------------------------
+/** Back to wherever the user came from, plus arrows to step through the zones on this floor. */
+function ScopeNav() {
+  const { meta } = useData();
+  const scope = useStore((s) => s.scope);
+  const history = useStore((s) => s.history);
+  const back = useStore((s) => s.back);
+  const select = useStore((s) => s.select);
+  if (scope.floor === undefined) return null;
+  const prev = history[history.length - 1] ?? (scope.zone ? { floor: scope.floor } : {});
+  const siblings = scope.zone ? (meta?.zones ?? []).filter((z) => z.floor === scope.floor).map((z) => z.zone).sort() : [];
+  const i = siblings.indexOf(scope.zone ?? "");
+  const step = (d: number) => select({ floor: scope.floor, zone: siblings[(i + d + siblings.length) % siblings.length] }, true);
+  return (
+    <div className="scope-nav">
+      <button type="button" className="scope-back" onClick={back} title="Back (Esc goes up one level)">
+        <span aria-hidden>←</span> Back to {scopeLabel(prev)}
+      </button>
+      {siblings.length > 1 && i >= 0 && (
+        <div className="scope-step" role="group" aria-label={`Zones on Floor ${scope.floor}`}>
+          <button type="button" onClick={() => step(-1)} aria-label="Previous zone on this floor">‹</button>
+          <span>Zone {i + 1} of {siblings.length}</span>
+          <button type="button" onClick={() => step(1)} aria-label="Next zone on this floor">›</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ScopeHeader({ zones }: { zones: ZoneInfo[] }) {
   const { auditById } = useData();
   const scope = useStore((s) => s.scope);
@@ -19,16 +50,20 @@ function ScopeHeader({ zones }: { zones: ZoneInfo[] }) {
   if (scope.zone) {
     const z = zones[0];
     const audit = z ? auditById.get(z.id) : undefined;
+    const use = zoneUse(scope.floor!, scope.zone);
     return (
       <div className="scope">
         <h1>Floor {scope.floor}, {zoneName(scope.zone).toLowerCase()}</h1>
+        {use && <p className="zone-use">{use.name}</p>}
         <p>{auditLayer
           ? audit ? measure === "audit_load"
             ? `${audit.circuit_count} audited circuits · mean after-hours load for ${month ? monthLabel(month) : "all recorded months"}.`
             : `${audit.circuit_count} audited circuits · ${audit.preventable_count} preventable, ${audit.critical_count} critical standby.`
             : "No Question A circuit data for this zone."
           : z?.status === "nodata" ? z.note : z?.has_ac ? "Temperature, humidity and AC power metered." : "Temperature and humidity only; no AC circuit metered."}</p>
+        {use && <p className="zone-lever">{use.lever}</p>}
         <div className="badges">
+          {use && <span className="badge">{use.kindLabel}</span>}
           {auditLayer && audit && measure !== "audit_load" && <span className="badge" style={{ color: AUDIT_CLASS_COLORS[audit.classification], borderColor: AUDIT_CLASS_COLORS[audit.classification] }}>{audit.classification}</span>}
           {!auditLayer && z?.inspect && <span className="badge amber">Check First: {z.inspect}</span>}
           {!auditLayer && z?.baseline && (z.baseline.passes
@@ -362,14 +397,14 @@ function ZoneGrid({ zones, measureOverride, onZoneSelect }: { zones: ZoneInfo[];
                 : audit.annual_surplus_kwh : null;
               const breach = mode === "whatif" && (byId.get(z.id)?.breach.length ?? 0) > 0;
               const cellTitle = measure === "audit_classification" && audit
-                ? `${zoneName(z.zone)} · ${audit.classification} · ${audit.preventable_count} preventable, ${audit.critical_count} critical standby · ${kwh(preventableKwh)} preventable energy${month ? ` in ${monthLabel(month)}` : " annually"}`
+                ? `${zoneLabel(f, z.zone)} · ${audit.classification} · ${audit.preventable_count} preventable, ${audit.critical_count} critical standby · ${kwh(preventableKwh)} preventable energy${month ? ` in ${monthLabel(month)}` : " annually"}`
                 : measure === "audit_load" && audit
-                  ? v === null ? `${zoneName(z.zone)} · no after-hours readings${month ? ` in ${monthLabel(month)}` : " for the annual period"} · Waste Status: ${audit.classification}` : `${zoneName(z.zone)} · ${n1(v)} kW mean after-hours load${month ? ` in ${monthLabel(month)}` : " in Jul 2018–Jun 2019"} · Waste Status: ${audit.classification} · ${kwh(preventableKwh)} preventable energy${month ? ` in ${monthLabel(month)}` : " in Jul 2018–Jun 2019"}${month && audit ? ` · ${audit.monthly[month]?.load_coverage_pct ?? 0}% load readings` : ""}`
+                  ? v === null ? `${zoneLabel(f, z.zone)} · no after-hours readings${month ? ` in ${monthLabel(month)}` : " for the annual period"} · Waste Status: ${audit.classification}` : `${zoneLabel(f, z.zone)} · ${n1(v)} kW mean after-hours load${month ? ` in ${monthLabel(month)}` : " in Jul 2018–Jun 2019"} · Waste Status: ${audit.classification} · ${kwh(preventableKwh)} preventable energy${month ? ` in ${monthLabel(month)}` : " in Jul 2018–Jun 2019"}${month && audit ? ` · ${audit.monthly[month]?.load_coverage_pct ?? 0}% load readings` : ""}`
                   : measure === "audit_kwh" && audit
-                    ? v === null ? `${zoneName(z.zone)} · no circuit readings in ${monthLabel(month!)}` : `${zoneName(z.zone)} · ${n1(v)} kWh preventable energy${month ? ` in ${monthLabel(month)}` : " in Jul 2018–Jun 2019"}${month && audit ? ` · ${audit.monthly[month]?.energy_coverage_pct ?? 0}% energy readings` : ""}`
+                    ? v === null ? `${zoneLabel(f, z.zone)} · no circuit readings in ${monthLabel(month!)}` : `${zoneLabel(f, z.zone)} · ${n1(v)} kWh preventable energy${month ? ` in ${monthLabel(month)}` : " in Jul 2018–Jun 2019"}${month && audit ? ` · ${audit.monthly[month]?.energy_coverage_pct ?? 0}% energy readings` : ""}`
                   : measure === "audit_cost" && audit
-                    ? v === null ? `${zoneName(z.zone)} · no circuit readings in ${monthLabel(month!)}` : `${zoneName(z.zone)} · ฿${Math.round(v).toLocaleString("en-US")} cost opportunity, excluding VAT${month ? ` in ${monthLabel(month)}` : " in Jul 2018–Jun 2019"}${month ? ` · ${audit.monthly[month]?.energy_coverage_pct ?? 0}% energy readings` : ""}`
-                  : `Floor ${f} ${zoneName(z.zone)}`;
+                    ? v === null ? `${zoneLabel(f, z.zone)} · no circuit readings in ${monthLabel(month!)}` : `${zoneLabel(f, z.zone)} · ฿${Math.round(v).toLocaleString("en-US")} cost opportunity, excluding VAT${month ? ` in ${monthLabel(month)}` : " in Jul 2018–Jun 2019"}${month ? ` · ${audit.monthly[month]?.energy_coverage_pct ?? 0}% energy readings` : ""}`
+                  : `Floor ${f} ${zoneLabel(f, z.zone)}`;
               return (
                 <button key={z.id} className={`dot ${hover === z.id ? "hot" : ""} ${isAuditMeasure(measure)
                   ? audit ? (measure !== "audit_classification" && v === null ? "nodata" : "") : "nodata"
@@ -547,6 +582,9 @@ export default function SidePanel() {
   const topic = useStore((s) => s.topic);
   const [auditDetailMeasure, setAuditDetailMeasure] = useState<MapMeasure>("audit_load");
   const auditLayer = topic === "afterhours";
+  const inner = useRef<HTMLDivElement>(null);
+  // A new selection starts at the top of the panel, not wherever the last one was scrolled to.
+  useEffect(() => { inner.current?.parentElement?.scrollTo({ top: 0 }); }, [scope.floor, scope.zone]);
   if (!meta) return <div className="side-inner"><p className="empty">Loading building data…</p></div>;
 
   const zones = meta.zones.filter((z) =>
@@ -555,9 +593,11 @@ export default function SidePanel() {
   const zone = scope.zone ? zones[0] : null;
   const auditZone = zone ? auditById.get(zone.id) : undefined;
 
-  return (
-    <div className="side-inner" key={`${scope.floor}|${scope.zone}`}>
-      <ScopeHeader zones={zones} />
+  // Building and floor views lead with a summary; the detail stays one click away.
+  const summaryFirst = !zone && mode === "overview";
+  // What-if leads with the summary and the recommended plan; the simulation below starts from that plan.
+  const planFirst = !zone && mode === "whatif";
+  const detail = <>
       {auditLayer ? <QuestionAPanel zones={zones} measure={measure as AuditMeasure} scope={scope} auditZone={auditZone}
         detailMeasure={auditDetailMeasure} showPlanner={mode === "whatif"} /> : <>
         {mode === "replay" ? <ReplayReadout zones={zones} /> : <>
@@ -577,6 +617,22 @@ export default function SidePanel() {
         <ZoneGrid zones={zones} measureOverride="audit_classification" onZoneSelect={setAuditDetailMeasure} />
       </> : <ZoneGrid zones={zones} />)}
       {!auditLayer && <Alerts zones={zones} results={results} />}
+  </>;
+
+  return (
+    <div className="side-inner" key={`${scope.floor}|${scope.zone}`} ref={inner}>
+      <ScopeNav />
+      <ScopeHeader zones={zones} />
+      {summaryFirst ? <>
+        <Overview zones={zones} />
+        <Section title="Detailed Analysis" collapsible={true} defaultOpen={false} className="details">
+          {detail}
+        </Section>
+      </> : planFirst ? <>
+        <Overview zones={zones} />
+        <Plan zones={zones} />
+        {detail}
+      </> : detail}
     </div>
   );
 }

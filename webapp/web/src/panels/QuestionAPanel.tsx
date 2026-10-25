@@ -3,6 +3,7 @@ import type { EnergyAuditZone, ZoneInfo } from "../lib/api";
 import { AUDIT_CLASS_COLORS } from "../lib/colors";
 import { useData } from "../lib/data";
 import { kwh, n1, n3 } from "../lib/format";
+import { recommend } from "../lib/plan";
 import { monthLabel, useStore, zoneName, type AuditMeasure, type MapMeasure, type Scope } from "../lib/store";
 import { AfterHoursLoadChart, CircuitEnergyHeatmap, FloorEnergyChart, PreventableEnergyChart } from "./Charts";
 import { Section, Stat } from "./PanelPrimitives";
@@ -134,7 +135,7 @@ function AuditSavings({ zones }: { zones: ZoneInfo[] }) {
   const visibleScenarioCircuits = scenarioCircuits.filter(({ floor }) => circuitPickerFloor === "all" || floor === circuitPickerFloor);
   const selectedCircuitSet = new Set(selectedCircuitIds ?? allPreventableCircuits.map((circuit) => circuit.circuit_id));
   const selectedPreventableCircuits = allPreventableCircuits.filter((circuit) => selectedCircuitSet.has(circuit.circuit_id));
-  const rateFor = (a: EnergyAuditZone) => captureRates[a.id] ?? 50;
+  const rateFor = (a: EnergyAuditZone) => captureRates[a.id] ?? recommend(a).rate;   // starts from the recommended plan
   const zoneScenario = (a: EnergyAuditZone, rate: number) => {
     const fraction = rate / 100;
     const periodFor = (c: EnergyAuditZone["circuits"][number]) => month ? c.monthly?.[month] : null;
@@ -211,7 +212,7 @@ function AuditSavings({ zones }: { zones: ZoneInfo[] }) {
 
   return (
     <Section title="Preventable Waste Savings Planner" aside={<span className="aside">{scopeLabel} · {month ? monthLabel(month) : "Jul 2018–Jun 2019"}</span>}>
-      <p className="note">Choose how much preventable after-hours load to bring toward its circuit baseline. Energy, cost, and projected load update as you adjust the capture rate.{energyCoverage < 99.9 ? ` Meter coverage for this scope and period is ${energyCoverage.toFixed(1)}%; savings include observed readings only.` : " Meter coverage is complete for this scope and period."}</p>
+      <p className="note">This starts from the recommended plan. Choose how much preventable after-hours load to bring toward its circuit baseline. Energy, cost, and projected load update as you adjust the capture rate.{energyCoverage < 99.9 ? ` Meter coverage for this scope and period is ${energyCoverage.toFixed(1)}%; savings include observed readings only.` : " Meter coverage is complete for this scope and period."}</p>
       <div className="capture-scenarios" role="group" aria-label="Preventable energy capture scenarios">
         <span className="capture-scenarios-label">Share of estimated preventable energy captured</span>
         {[
