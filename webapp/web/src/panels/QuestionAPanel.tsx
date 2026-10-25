@@ -139,8 +139,14 @@ function AuditSavings({ zones }: { zones: ZoneInfo[] }) {
     const fraction = rate / 100;
     const periodFor = (c: EnergyAuditZone["circuits"][number]) => month ? c.monthly?.[month] : null;
     const preventableCircuits = a.circuits.filter((c) => c.classification === "Preventable Waste" && selectedCircuitSet.has(c.circuit_id));
-    const energyValues = month ? preventableCircuits.map((c) => periodFor(c)?.surplus_kwh ?? null).filter((v): v is number => v !== null) : [a.annual_surplus_kwh];
-    const costValues = month ? preventableCircuits.map((c) => periodFor(c)?.cost_thb ?? null).filter((v): v is number => v !== null) : [a.annual_cost_thb];
+    // Use the selected circuit rows for both monthly and annual views. Zone-level
+    // annual totals include every preventable circuit, including unchecked ones.
+    const energyValues = month
+      ? preventableCircuits.map((c) => periodFor(c)?.surplus_kwh ?? null).filter((v): v is number => v !== null)
+      : preventableCircuits.map((c) => c.annual_surplus_kwh);
+    const costValues = month
+      ? preventableCircuits.map((c) => periodFor(c)?.cost_thb ?? null).filter((v): v is number => v !== null)
+      : preventableCircuits.map((c) => c.annual_cost_thb);
     if (preventableCircuits.length === 0) { energyValues.push(0); costValues.push(0); }
     const energy = energyValues.length ? energyValues.reduce((sum, value) => sum + value, 0) : null;
     const cost = costValues.length ? costValues.reduce((sum, value) => sum + value, 0) : null;
