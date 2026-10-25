@@ -11,7 +11,7 @@ const TOPICS: { id: Topic; label: string; hint: string }[] = [
 const MODE_LABELS: Record<"afterhours" | "comfort", Partial<Record<Mode, { label: string; hint: string }>>> = {
   afterhours: {
     overview: { label: "Today", hint: "Where after-hours load runs and what it costs" },
-    whatif: { label: "Switch-off What-If", hint: "Choose how much preventable load to cut and see energy and cost saved" },
+    whatif: { label: "What-If Simulation", hint: "Choose how much preventable load to cut and see energy and cost saved" },
   },
   comfort: {
     overview: { label: "Today", hint: "How the building runs now" },

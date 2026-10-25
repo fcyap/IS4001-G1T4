@@ -12,6 +12,7 @@ export interface Scope { floor?: number; zone?: string }
 interface State {
   topic: Topic;
   scope: Scope;
+  history: Scope[];                 // scopes visited before this one, for the back button
   mode: Mode;
   month: string | null;             // null = all months available to the active view
   measure: MapMeasure;
@@ -25,13 +26,15 @@ interface State {
 
   setTopic: (t: Topic) => void;
   navigate: (t: Topic, mode?: Mode) => void;
-  select: (s: Scope) => void;
+  select: (s: Scope, replace?: boolean) => void;   // replace: step sideways without adding a back step
+  back: () => void;
   up: () => void;
   setMode: (m: Mode) => void;
   setMonth: (m: string | null) => void;
   setMeasure: (m: MapMeasure) => void;
   setAuditCaptureRate: (zoneId: string, rate: number) => void;
   setAuditCaptureRates: (zoneIds: string[], rate: number) => void;
+  resetAuditCaptureRates: (zoneIds: string[]) => void;      // back to the recommended plan
   setView: (v: "3d" | "plan") => void;
   setHover: (id: string | null) => void;
   setWhatif: (p: Partial<State["whatif"]>) => void;
@@ -61,6 +64,7 @@ const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce
 export const useStore = create<State>((set, get) => ({
   topic: initialTopic,
   scope: initialTopic === "home" ? {} : initialScope,
+  history: [],
   mode: startMode,
   month: null,
   measure: measureFor(initialTopic, startMode),
@@ -90,9 +94,16 @@ export const useStore = create<State>((set, get) => ({
   setTopic: (topic) => set((s) => {
     const mode = modeFor(topic, s.mode);      // keep the mode when the new question has it, e.g. What-if to What-if
     return { topic, mode, measure: measureFor(topic, mode), scope: topic === "home" ? {} : s.scope,
+      history: topic === "home" ? [] : s.history,
       replay: { ...s.replay, playing: false } };
   }),
-  select: (scope) => set({ scope }),
+  select: (scope, replace = false) => set((s) => sameScope(s.scope, scope) ? {}
+    : { scope, history: replace ? s.history : [...s.history, s.scope].slice(-20) }),
+  back: () => {
+    const { history } = get();
+    if (!history.length) return get().up();
+    set({ scope: history[history.length - 1], history: history.slice(0, -1) });
+  },
   up: () => {
     const { scope } = get();
     if (scope.floor === undefined) get().navigate("home");     // already at the whole building: back to the landing page
@@ -112,6 +123,8 @@ export const useStore = create<State>((set, get) => ({
   setAuditCaptureRates: (zoneIds, rate) => set((s) => ({ auditCaptureRates: {
     ...s.auditCaptureRates, ...Object.fromEntries(zoneIds.map((id) => [id, rate])),
   } })),
+  resetAuditCaptureRates: (zoneIds) => set((s) => ({ auditCaptureRates: Object.fromEntries(
+    Object.entries(s.auditCaptureRates).filter(([id]) => !zoneIds.includes(id))) })),
   setView: (view) => set({ view }),
   setHover: (hover) => set({ hover }),
   setWhatif: (p) => set((s) => ({ whatif: { ...s.whatif, ...p } })),
@@ -133,6 +146,11 @@ export function scenarioBody(s: Pick<State, "mode" | "month" | "whatif">, forRep
     months: s.month && !forReplay ? [s.month] : [],
   };
 }
+
+const sameScope = (a: Scope, b: Scope) => a.floor === b.floor && a.zone === b.zone;
+/** "Whole Building", "Floor 4" or "Floor 4, zone 2". */
+export const scopeLabel = (s: Scope) =>
+  s.floor === undefined ? "Whole Building" : s.zone ? `Floor ${s.floor}, zone ${s.zone.slice(1)}` : `Floor ${s.floor}`;
 
 export const zoneId = (floor: number, zone: string) => `F${floor}:${zone}`;
 export const zoneName = (zone: string) => `Zone ${zone.slice(1)}`;

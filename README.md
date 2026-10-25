@@ -12,7 +12,7 @@ The **Chamchuri 5** button (or Esc from the whole-building view) returns to the 
 **After-hours Waste** (Question A)
 - **Today**: colour zones by mean after-hours circuit load. The panel shows preventable energy and cost and the circuit
   classification (preventable waste, critical standby or mixed). Selecting a zone shows its lighting and plug circuits.
-- **Switch-off what-if**: the savings planner. Choose how much preventable load to capture and see energy and cost saved.
+- **What-if simulation**: the savings planner. Choose how much preventable load to capture and see energy and cost saved.
 
 **Cooling Comfort** (Question B)
 - **Today**: colour zones by % of office time too cool, % comfortable, mean PMV, or AC power.
@@ -28,23 +28,85 @@ another for Floors 3-7. The facade, stair towers and rooftop PV are schematic. T
 
 ## Run it
 
-You need Python 3.13 with `requirements.txt` installed, and Node 18 or later. Run from the repository root.
+Every command below is run from the **repository root** (the folder that contains `webapp/`, `data/` and `requirements.txt`).
+The data the app needs is already in the repository.
 
-**Demo, one process.** This serves the built app and the API on http://localhost:8000:
+### 1. Install Python and Node (once)
+
+You need **Python 3.11 or newer** (3.13 recommended) and **Node.js 18 or newer**. Check what you have:
+
+```bash
+python3 --version    # Windows: python --version
+node --version
+```
+
+If either is missing or too old:
+- **macOS:** `brew install python@3.13 node`. The `python3` that ships with macOS is 3.9, which is too old.
+- **Windows:** install from [python.org](https://www.python.org/downloads/) (tick **Add python.exe to PATH**) and [nodejs.org](https://nodejs.org/).
+
+### 2. Set up the project (once)
+
+**macOS / Linux**
+
+```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cd webapp/web && npm install && npm run build && cd ../..
+```
+
+**Windows (PowerShell)**
 
 ```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 cd webapp/web; npm install; npm run build; cd ../..
+```
+
+If PowerShell blocks `Activate.ps1`, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, then try again.
+
+### 3. Start the app (every time)
+
+**macOS / Linux**
+
+```bash
+source .venv/bin/activate
 python -m webapp.api
 ```
 
-**Development, with hot reload.** This starts the API on :8000 and Vite on :5173:
+**Windows (PowerShell)**
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File webapp\run_dev.ps1
+.venv\Scripts\Activate.ps1
+python -m webapp.api
 ```
 
+Open **http://localhost:8000**. Press Ctrl+C in the terminal to stop it.
+After pulling new frontend changes, run `npm run build` in `webapp/web` again before starting.
+
+### Development, with hot reload
+
+This starts the API on :8000 and Vite on :5173, and opens http://localhost:5173. Edits to the frontend show up straight away.
+
+```bash
+./webapp/run_dev.sh                                           # macOS / Linux
+powershell -ExecutionPolicy Bypass -File webapp\run_dev.ps1   # Windows
+```
+
+### If it doesn't start
+
+| What you see | What to do |
+|---|---|
+| `pip install` fails on pandas or numpy | Python is older than 3.11. Delete `.venv` and redo step 2 with a newer Python. |
+| `No module named 'fastapi'` | The virtual environment isn't active. Run the activate line from step 3 first. |
+| `Port 8000 is already in use` | The app is already running in another terminal. Stop it, or use `python -m webapp.api --port 8001`. |
+| The page shows `{"detail":"Not Found"}` | The frontend isn't built. Run `npm install && npm run build` in `webapp/web`. |
+| The page stays on *Loading building data…* | The API stopped with an error. Check the terminal where you started it. |
+| `npm: command not found` | Install Node.js (step 1), then open a new terminal. |
+
 **Deep links** for presenting. A bare URL opens the landing page:
-- `?topic=afterhours`, `?topic=afterhours&floor=1`, `?topic=afterhours&mode=whatif` (the switch-off planner)
+- `?topic=afterhours`, `?topic=afterhours&floor=1`, `?topic=afterhours&mode=whatif` (the What-If Simulation)
 - `?topic=comfort`
 - `?mode=whatif&floor=4` (any link without `topic` opens Cooling Comfort)
 - `?floor=7&zone=z4`

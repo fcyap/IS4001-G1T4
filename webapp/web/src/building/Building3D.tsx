@@ -7,6 +7,7 @@ import type { ZoneInfo } from "../lib/api";
 import { AUDIT_CLASS_COLORS, auditValueColor, C, MEASURES } from "../lib/colors";
 import { replayValue, useData, zoneValue } from "../lib/data";
 import { isAuditMeasure, monthLabel, useStore, zoneName } from "../lib/store";
+import { zoneUse } from "../lib/zones";
 import { FLOORS, FLOOR_H, LIFT, SLAB, ZONE_H, bandShape, coreShape, floorY, footprint, stairSpan } from "./layout";
 
 const LANDING_ZONE = "#5d7594";
@@ -136,6 +137,7 @@ function Zone({ z, faded }: { z: ZoneInfo; faded: boolean }) {
         <Html center position={[f.cx, h + 0.7, f.cz]} pointerEvents="none" zIndexRange={[20, 0]}>
           <div className={`tag ${isHover ? "tag-hover" : ""}`}>
             <b>{zoneName(z.zone)}</b>
+            {isHover && zoneUse(z.floor, z.zone) && <span className="tag-use">{zoneUse(z.floor, z.zone)!.name}</span>}
             <span>{display}</span>
           </div>
         </Html>

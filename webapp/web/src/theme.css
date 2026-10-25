@@ -120,8 +120,18 @@ select.mini { padding: 3px 24px 3px 8px; font-size: var(--t-xs); }
 .stage canvas { display: block; }
 
 /* --- Side panel ---------------------------------------------------------------------------- */
+.scope-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.scope-back { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px 5px 8px; border: 1px solid var(--line-2); border-radius: 999px;
+  background: var(--panel-2); color: var(--ink); font: inherit; font-size: var(--t-s); cursor: pointer; }
+.scope-back:hover { border-color: var(--ink-2); }
+.scope-step { display: inline-flex; align-items: center; gap: 2px; font-size: var(--t-xs); color: var(--muted); }
+.scope-step button { width: 26px; height: 26px; border: 1px solid var(--line-2); border-radius: 50%; background: none; color: var(--ink); font-size: var(--t-m); line-height: 1; cursor: pointer; }
+.scope-step button:hover { background: var(--panel-2); }
+.scope-step span { padding: 0 6px; }
 .scope h1 { margin: 0 0 4px; font-size: var(--t-xxl); font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; }
 .scope p { margin: 0; color: var(--ink-2); max-width: 62ch; font-size: var(--t-s); }
+.scope p.zone-use { margin: 0 0 6px; color: var(--ink); font-size: var(--t-m); font-weight: 500; }
+.scope p.zone-lever { margin-top: 6px; }
 .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .badge { font-size: var(--t-xs); padding: 3px 9px; border-radius: 999px; border: 1px solid; }
 .badge.ok { color: var(--comfy); border-color: #355f50; }
@@ -247,6 +257,44 @@ input[type="range"] { accent-color: var(--warm); width: 100%; }
 .tbl td.why { white-space: normal; color: var(--muted); }
 .tbl tr.on td { color: var(--cool); }
 
+/* Building / floor at a glance */
+.glance-lead { margin: -6px 0 18px; font-size: var(--t-s); color: var(--ink-2); max-width: 62ch; }
+.glance-lead b { color: var(--ink); font-weight: 600; }
+.glance-h { margin: 18px 0 8px; font-size: var(--t-xs); font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.glance-kinds td small { color: var(--muted); }
+.rank { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.rank-row { width: 100%; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(40px, 1fr) auto; align-items: center; gap: 10px;
+  padding: 6px 8px; border: 1px solid transparent; border-radius: var(--r-s); background: none; color: inherit; font: inherit; text-align: left; }
+button.rank-row { cursor: pointer; }
+button.rank-row:hover { background: var(--panel-2); border-color: var(--line-2); }
+.rank-name { display: flex; flex-direction: column; min-width: 0; font-size: var(--t-s); }
+.rank-name small, .rank-val small { color: var(--muted); font-size: var(--t-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-bar { height: 8px; border-radius: 4px; background: var(--nodata); overflow: hidden; }
+.rank-bar i { display: block; height: 100%; border-radius: 4px; transition: width 0.45s ease; }
+.rank-val { display: flex; flex-direction: column; align-items: flex-end; font-size: var(--t-s); }
+
+/* Recommended plan (What-If Simulation) */
+.plan-total { padding: 14px 16px; background: var(--panel-2); border-radius: var(--r-m); margin-bottom: 12px; }
+.plan-total .big { display: block; font-size: var(--t-xxl); font-weight: 600; letter-spacing: -0.02em; color: var(--comfy); line-height: 1.15; }
+.plan-total .sub { display: block; font-size: var(--t-xs); color: var(--muted); }
+.plan-parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+.plan-part { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-m); font-size: var(--t-s); }
+.plan-part.on { border-color: var(--line-2); background: var(--panel-2); }
+.plan-part > span:last-child { grid-column: 2; color: var(--ink-2); font-size: var(--t-xs); }
+.plan-step { grid-row: span 2; width: 20px; height: 20px; border-radius: 50%; background: var(--line-2); color: var(--ink); font-size: var(--t-xs); display: grid; place-items: center; }
+.plan-zones { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; }
+.plan-zone { width: 100%; display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 7px 8px;
+  border: 1px solid transparent; border-radius: var(--r-s); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.plan-zone:hover { background: var(--panel-2); border-color: var(--line-2); }
+.plan-rate { font-size: var(--t-xs); font-weight: 600; text-align: center; padding: 3px 0; border-radius: 999px; color: var(--comfy); border: 1px solid #355f50; }
+.plan-rate.off { color: var(--muted); border-color: var(--line-2); }
+.plan-zone-name { display: flex; flex-direction: column; min-width: 0; font-size: var(--t-s); }
+.plan-zone-name b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-zone-name small { color: var(--muted); font-size: var(--t-xs); font-weight: 400; }
+.plan-zone-val { font-size: var(--t-s); font-weight: 600; }
+.plan-status { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-top: 12px; padding: 10px 12px; border-left: 2px solid var(--comfy);
+  background: var(--panel-2); border-radius: 0 var(--r-s) var(--r-s) 0; font-size: var(--t-s); color: var(--ink-2); }
+
 .chart-ph { height: 150px; border-radius: var(--r-m); background: linear-gradient(90deg, var(--panel-2), #1c3150, var(--panel-2)); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 
@@ -284,6 +332,7 @@ input[type="range"] { accent-color: var(--warm); width: 100%; }
 .tag b { font-weight: 600; }
 .tag span { color: var(--ink-2); }
 .tag-hover { border-color: var(--ink-2); }
+.tag .tag-use { color: var(--ink); max-width: 22ch; white-space: normal; text-align: center; }
 .zone-side-popup { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line-2); border-radius: var(--r-m); background: var(--panel-2); }
 .zone-side-popup-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
 .zone-side-popup-summary b { flex-basis: 100%; color: var(--ink); font-size: 16px; }
