@@ -4,13 +4,12 @@ import type { EnergyAuditZone, ZoneInfo, ZoneResult } from "../lib/api";
 import { rollup, useData } from "../lib/data";
 import { kwh, n0 } from "../lib/format";
 import { monthLabel, useStore } from "../lib/store";
-import { zoneUse, type ZoneKind } from "../lib/zones";
+import { zoneUse } from "../lib/zones";
 import { Section, Stat } from "./PanelPrimitives";
 
 interface Group { key: string; label: string; sub?: string; zones: ZoneInfo[]; onPick?: () => void }
 interface Row extends Group { kwh: number; thb: number; tooCool: number; hasComfort: boolean }
 
-const KIND_ORDER: ZoneKind[] = ["office", "lobby", "circulation", "exterior", "plant"];
 const thb = (v: number) => `฿${Math.round(v).toLocaleString("en-US")}`;
 const pct = (v: number, total: number) => (total > 0 ? `${n0((v / total) * 100)} %` : "–");
 
@@ -79,12 +78,6 @@ export default function Overview({ zones }: { zones: ZoneInfo[] }) {
     }));
   const childRows = useRows(children);
 
-  const kinds = KIND_ORDER.map((k) => ({ k, zs: zones.filter((z) => zoneUse(z.floor, z.zone)?.kind === k) }))
-    .filter(({ zs }) => zs.length > 0);
-  const kindRows = useRows(kinds.map(({ k, zs }) => ({
-    key: k, label: zoneUse(zs[0].floor, zs[0].zone)!.kindLabel, sub: `${zs.length} zone${zs.length > 1 ? "s" : ""}`, zones: zs,
-  })));
-
   const zoneRows = useRows(zones.map((z) => ({ key: z.id, label: `Floor ${z.floor}, zone ${z.zone.slice(1)}`, zones: [z] })));
   const top = [...zoneRows].sort((a, b) => b.kwh - a.kwh)[0];
   const topUse = top ? zoneUse(top.zones[0].floor, top.zones[0].zone) : null;
@@ -106,21 +99,6 @@ export default function Overview({ zones }: { zones: ZoneInfo[] }) {
           <button className="link" onClick={() => select({ floor: top.zones[0].floor, zone: top.zones[0].zone })}>Open it</button>
         </p>
       )}
-
-      <h3 className="glance-h">By Type of Space</h3>
-      <table className="tbl glance-kinds">
-        <thead><tr><th>Space</th><th>After-hours Waste</th><th>Share</th><th>Too Cool</th></tr></thead>
-        <tbody>
-          {kindRows.map((r) => (
-            <tr key={r.key}>
-              <td><b>{r.label}</b> <small>{r.sub}</small></td>
-              <td>{kwh(r.kwh)}</td>
-              <td>{pct(r.kwh, all.kwh)}</td>
-              <td>{r.hasComfort ? `${n0(r.tooCool)} %` : "–"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
 
       <h3 className="glance-h">{scope.floor === undefined ? "Floors" : "Zones"}, ranked by {byWaste ? "after-hours waste" : "time too cool"}</h3>
       <RankedList rows={childRows} byWaste={byWaste} total={all.kwh}
