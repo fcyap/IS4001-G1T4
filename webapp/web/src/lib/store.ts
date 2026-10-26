@@ -12,11 +12,13 @@ export interface Scope { floor?: number; zone?: string }
 interface State {
   topic: Topic;
   scope: Scope;
+  scopeNavigationCount: number;
   history: Scope[];                 // scopes visited before this one, for the back button
   mode: Mode;
   month: string | null;             // null = all months available to the active view
   measure: MapMeasure;
   auditCaptureRates: Record<string, number>;
+  auditCutoffHour: number;
   view: "3d" | "plan";
   hover: string | null;
   whatif: { mode: "global" | "rule"; globalC: number; overrides: Record<string, number> };
@@ -35,6 +37,7 @@ interface State {
   setAuditCaptureRate: (zoneId: string, rate: number) => void;
   setAuditCaptureRates: (zoneIds: string[], rate: number) => void;
   resetAuditCaptureRates: (zoneIds: string[]) => void;      // back to the recommended plan
+  setAuditCutoffHour: (hour: number) => void;
   setView: (v: "3d" | "plan") => void;
   setHover: (id: string | null) => void;
   setWhatif: (p: Partial<State["whatif"]>) => void;
@@ -64,11 +67,13 @@ const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce
 export const useStore = create<State>((set, get) => ({
   topic: initialTopic,
   scope: initialTopic === "home" ? {} : initialScope,
+  scopeNavigationCount: 0,
   history: [],
   mode: startMode,
   month: null,
   measure: measureFor(initialTopic, startMode),
   auditCaptureRates: {},
+  auditCutoffHour: 17,
   view: q.get("view") === "plan" ? "plan" : "3d",
   hover: null,
   whatif: { mode: "rule", globalC: 1, overrides: {} },
@@ -98,16 +103,19 @@ export const useStore = create<State>((set, get) => ({
       replay: { ...s.replay, playing: false } };
   }),
   select: (scope, replace = false) => set((s) => sameScope(s.scope, scope) ? {}
-    : { scope, history: replace ? s.history : [...s.history, s.scope].slice(-20) }),
+    : { scope, scopeNavigationCount: s.scopeNavigationCount + 1,
+      history: replace ? s.history : [...s.history, s.scope].slice(-20) }),
   back: () => {
     const { history } = get();
     if (!history.length) return get().up();
-    set({ scope: history[history.length - 1], history: history.slice(0, -1) });
+    set({ scope: history[history.length - 1], history: history.slice(0, -1),
+      scopeNavigationCount: get().scopeNavigationCount + 1 });
   },
   up: () => {
     const { scope } = get();
     if (scope.floor === undefined) get().navigate("home");     // already at the whole building: back to the landing page
-    else set({ scope: scope.zone ? { floor: scope.floor } : {} });
+    else set((s) => ({ scope: scope.zone ? { floor: scope.floor } : {},
+      scopeNavigationCount: s.scopeNavigationCount + 1 }));
   },
   setMode: (mode) => set((s) => ({
     mode,
@@ -125,6 +133,7 @@ export const useStore = create<State>((set, get) => ({
   } })),
   resetAuditCaptureRates: (zoneIds) => set((s) => ({ auditCaptureRates: Object.fromEntries(
     Object.entries(s.auditCaptureRates).filter(([id]) => !zoneIds.includes(id))) })),
+  setAuditCutoffHour: (hour) => set({ auditCutoffHour: hour }),
   setView: (view) => set({ view }),
   setHover: (hover) => set({ hover }),
   setWhatif: (p) => set((s) => ({ whatif: { ...s.whatif, ...p } })),

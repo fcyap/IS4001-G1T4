@@ -43,7 +43,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const date = useStore((s) => s.replay.date);
   const setReplay = useStore((s) => s.setReplay);
 
-  const meta = useFetch("meta", () => api.meta(), 0);
+  const meta = useFetch("meta-afterhours-timing-v2", () => api.meta(), 0);
   const body = scenarioBody({ mode, month, whatif });
   const result = useFetch(JSON.stringify(body), (sig) => api.whatif(body, sig));
   const rbody = scenarioBody({ mode, month, whatif }, true);

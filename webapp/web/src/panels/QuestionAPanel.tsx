@@ -1,9 +1,8 @@
-import { useState } from "react";
 import type { EnergyAuditZone, ZoneInfo } from "../lib/api";
 import { AUDIT_CLASS_COLORS } from "../lib/colors";
 import { useData } from "../lib/data";
 import { kwh, n1, n3 } from "../lib/format";
-import { recommend } from "../lib/plan";
+import { plannedScheduleSavings, recommend } from "../lib/plan";
 import { monthLabel, useStore, zoneName, type AuditMeasure, type MapMeasure, type Scope } from "../lib/store";
 import { AfterHoursLoadChart, CircuitEnergyHeatmap, FloorEnergyChart, PreventableEnergyChart } from "./Charts";
 import { Section, Stat } from "./PanelPrimitives";
@@ -28,14 +27,6 @@ function EnergyReadouts({ zones }: { zones: ZoneInfo[] }) {
     </div>
     <p className="note">Preventable energy is accumulated surplus above circuit baselines, measured in kWh. {month ? `Energy uses recorded after-hours readings in ${monthLabel(month)}; cost uses the peak/off-peak tariff and excludes VAT.` : "Annual totals sum the recorded clean baseline period, Jul 2018–Jun 2019, using the same hourly data as the monthly view. Cost excludes VAT."} Critical standby loads are excluded.{energyCoverage < 99.9 && ` Coverage is ${energyCoverage.toFixed(1)}%; the displayed total includes observed readings only.`}</p>
   </>;
-}
-
-function AuditClassificationMethod() {
-  return <details className="audit-method">
-    <summary>How circuit labels are assigned</summary>
-    <p>The notebook’s K-means model groups circuits using three operating-pattern measures: unoccupied-to-occupied load ratio, the 2.5th-percentile standby baseline, and variability during unoccupied hours.</p>
-    <p><b>Preventable Waste</b> identifies schedule-responsive loads that may be reduced with a curfew. <b>Critical Standby</b> identifies stable, continuous loads to protect. These are operational categories, not confirmed equipment faults.</p>
-  </details>;
 }
 
 function AfterHoursLoadReadouts({ zones }: { zones: ZoneInfo[] }) {
@@ -117,167 +108,97 @@ function PreventableEnergyByCircuitAndMonth({ zones }: { zones: ZoneInfo[] }) {
   </Section>;
 }
 
-function AuditSavings({ zones }: { zones: ZoneInfo[] }) {
-  const { auditById } = useData();
+function AuditSavings() {
+  const { meta } = useData();
   const month = useStore((s) => s.month);
   const scope = useStore((s) => s.scope);
-  const [selectedCircuitIds, setSelectedCircuitIds] = useState<string[] | null>(null);
-  const [circuitPickerFloor, setCircuitPickerFloor] = useState<number | "all">("all");
-  const captureRates = useStore((s) => s.auditCaptureRates);
-  const setCaptureRate = useStore((s) => s.setAuditCaptureRate);
-  const setCaptureRates = useStore((s) => s.setAuditCaptureRates);
-  const audits = zones.map((z) => auditById.get(z.id)).filter((a): a is EnergyAuditZone => !!a);
-  const scenarioCircuits = audits.flatMap((audit) => audit.circuits
-    .filter((circuit) => circuit.classification === "Preventable Waste")
-    .map((circuit) => ({ circuit, floor: audit.floor, zone: audit.zone })));
-  const allPreventableCircuits = scenarioCircuits.map(({ circuit }) => circuit);
-  const circuitFloors = [...new Set(scenarioCircuits.map(({ floor }) => floor))].sort((a, b) => a - b);
-  const visibleScenarioCircuits = scenarioCircuits.filter(({ floor }) => circuitPickerFloor === "all" || floor === circuitPickerFloor);
-  const selectedCircuitSet = new Set(selectedCircuitIds ?? allPreventableCircuits.map((circuit) => circuit.circuit_id));
-  const selectedPreventableCircuits = allPreventableCircuits.filter((circuit) => selectedCircuitSet.has(circuit.circuit_id));
-  const rateFor = (a: EnergyAuditZone) => captureRates[a.id] ?? recommend(a).rate;   // starts from the recommended plan
-  const zoneScenario = (a: EnergyAuditZone, rate: number) => {
-    const fraction = rate / 100;
-    const periodFor = (c: EnergyAuditZone["circuits"][number]) => month ? c.monthly?.[month] : null;
-    const preventableCircuits = a.circuits.filter((c) => c.classification === "Preventable Waste" && selectedCircuitSet.has(c.circuit_id));
-    // Use the selected circuit rows for both monthly and annual views. Zone-level
-    // annual totals include every preventable circuit, including unchecked ones.
-    const energyValues = month
-      ? preventableCircuits.map((c) => periodFor(c)?.surplus_kwh ?? null).filter((v): v is number => v !== null)
-      : preventableCircuits.map((c) => c.annual_surplus_kwh);
-    const costValues = month
-      ? preventableCircuits.map((c) => periodFor(c)?.cost_thb ?? null).filter((v): v is number => v !== null)
-      : preventableCircuits.map((c) => c.annual_cost_thb);
-    if (preventableCircuits.length === 0) { energyValues.push(0); costValues.push(0); }
-    const energy = energyValues.length ? energyValues.reduce((sum, value) => sum + value, 0) : null;
-    const cost = costValues.length ? costValues.reduce((sum, value) => sum + value, 0) : null;
-    const measuredCircuits = preventableCircuits.filter((c) => (month ? c.monthly?.[month]?.unocc_mean_kw : c.unocc_mean_kw) !== null && (month ? c.monthly?.[month]?.unocc_mean_kw : c.unocc_mean_kw) !== undefined);
-    const loads = measuredCircuits.map((c) => month ? c.monthly?.[month]?.unocc_mean_kw ?? 0 : c.unocc_mean_kw ?? 0);
-    const currentLoad = preventableCircuits.length === 0 ? 0 : loads.length ? loads.reduce((sum, value) => sum + value, 0) : null;
-    const baselineLoad = preventableCircuits.length === 0 ? 0 : measuredCircuits.length ? measuredCircuits.reduce((sum, c) => sum + c.baseload_kw, 0) : null;
-    const reducibleLoad = measuredCircuits.reduce((sum, c) => {
-      const period = periodFor(c);
-      const surplus = month ? period?.surplus_kwh : c.annual_surplus_kwh;
-      const hours = month ? period?.unocc_hours : c.annual_unocc_hours;
-      return sum + (surplus !== null && surplus !== undefined && hours ? surplus / hours : 0);
-    }, 0);
-    const projectedLoad = baselineLoad === null || currentLoad === null ? null : currentLoad - reducibleLoad * fraction;
-    return { energy: energy === null ? null : energy * fraction, cost: cost === null ? null : cost * fraction, currentLoad, projectedLoad, baselineLoad };
-  };
-  const rates = audits.map(rateFor);
-  const scopeRate = rates.length && rates.every((rate) => rate === rates[0]) ? rates[0] : null;
-  const sliderRate = scopeRate ?? (rates.length ? Math.round(rates.reduce((sum, rate) => sum + rate, 0) / rates.length * 10) / 10 : 50);
-  const rateText = (rate: number) => `${Number.isInteger(rate) ? rate : rate.toFixed(1)}%`;
-  const eligibleAudits = audits.filter((audit) => audit.preventable_count > 0);
-  const selectedPreset = eligibleAudits.length && eligibleAudits.every((audit) => rateFor(audit) === rateFor(eligibleAudits[0]))
-    ? rateFor(eligibleAudits[0]) : null;
-  const scenario = audits.reduce((total, audit) => {
-    const values = zoneScenario(audit, rateFor(audit));
-    if (values.energy !== null) { total.energy += values.energy; total.hasAnyEnergy = true; }
-    if (values.cost !== null) { total.cost += values.cost; total.hasAnyCost = true; }
-    if (values.currentLoad !== null) { total.currentLoad += values.currentLoad; total.hasAnyLoad = true; }
-    if (values.projectedLoad !== null && values.baselineLoad !== null) {
-      total.baselineAvailable = true;
-      total.projectedLoad += values.projectedLoad;
-      total.baselineLoad += values.baselineLoad;
-    }
-    return total;
-  }, { energy: 0, cost: 0, currentLoad: 0, projectedLoad: 0, baselineLoad: 0, baselineAvailable: false, hasAnyEnergy: false, hasAnyCost: false, hasAnyLoad: false });
-  const availableEnergyValues = audits.map((audit) => zoneScenario(audit, 100).energy).filter((value): value is number => value !== null);
-  const availableEnergy = availableEnergyValues.reduce((sum, value) => sum + value, 0);
-  const energyUnitScale = availableEnergy >= 1000 ? 1000 : 1;
-  const energyUnit = energyUnitScale === 1000 ? "MWh" : "kWh";
-  const remainingEnergy = Math.max(availableEnergy - scenario.energy, 0);
-  const preventableCircuits = selectedPreventableCircuits;
-  const expectedEnergyHours = preventableCircuits.reduce((sum, circuit) => sum + (month
-    ? circuit.monthly?.[month]?.expected_unocc_hours ?? 0 : circuit.annual_expected_unocc_hours), 0);
-  const observedEnergyHours = preventableCircuits.reduce((sum, circuit) => sum + (month
-    ? circuit.monthly?.[month]?.unocc_hours ?? 0 : circuit.annual_unocc_hours), 0);
-  const energyCoverage = expectedEnergyHours ? 100 * observedEnergyHours / expectedEnergyHours : 100;
-  const hasScenarioData = preventableCircuits.some((circuit) => month
-    ? (circuit.monthly?.[month]?.unocc_hours ?? 0) > 0
-    : circuit.annual_unocc_hours > 0);
-  const applyScenario = (rate: number) => audits.forEach((audit) => setCaptureRate(audit.id, audit.preventable_count > 0 ? rate : 0));
-  const toggleCircuit = (circuitId: string) => {
-    const next = new Set(selectedCircuitSet);
-    if (next.has(circuitId)) next.delete(circuitId); else next.add(circuitId);
-    setSelectedCircuitIds(next.size === allPreventableCircuits.length ? null : [...next]);
-  };
-  const applyEnergyTarget = (targetInDisplayUnits: number) => {
-    const targetKwh = Math.max(0, Math.min(availableEnergy, targetInDisplayUnits * energyUnitScale));
-    const captureRate = availableEnergy > 0 ? Math.round((availableEnergy - targetKwh) / availableEnergy * 1000) / 10 : 0;
-    setCaptureRates(audits.map((audit) => audit.id), captureRate);
-  };
-  const scopeLabel = scope.zone ? `Floor ${scope.floor}, ${zoneName(scope.zone)}` : scope.floor ? `Floor ${scope.floor}` : "Whole Building";
+  const scopeNavigationCount = useStore((s) => s.scopeNavigationCount);
+  const select = useStore((s) => s.select);
+  const cutoff = useStore((s) => s.auditCutoffHour);
+  const setCutoff = useStore((s) => s.setAuditCutoffHour);
+  const scopeLabel = scope.zone ? `Floor ${scope.floor} · ${zoneName(scope.zone)}` : scope.floor ? `Floor ${scope.floor}` : "Whole Building";
+  const estimateFor = (selectedScope: Scope) => meta ? plannedScheduleSavings(meta, selectedScope, cutoff, month) : null;
+  const estimate = estimateFor(scope);
+  const parentScopes = scope.zone
+    ? [{ label: `Floor ${scope.floor}`, target: { floor: scope.floor } }, { label: "Whole building", target: {} }]
+    : scope.floor ? [{ label: "Whole building", target: {} }] : [];
+  const parentScenarios = parentScopes.map(({ label, target }) => {
+    const values = estimateFor(target);
+    return { label, target, energy: values?.energyKwh, cost: values?.costThb };
+  });
+  const breakdownRows = scope.floor
+    ? (meta?.zones.filter((zone) => zone.floor === scope.floor) ?? []).map((zone) => {
+      const values = estimateFor({ floor: zone.floor, zone: zone.zone });
+      return { key: zone.id, label: zoneName(zone.zone), selected: scope.zone === zone.zone,
+        energy: values?.energyKwh, cost: values?.costThb,
+        onClick: () => select({ floor: zone.floor, zone: zone.zone }) };
+    })
+    : Array.from({ length: 7 }, (_, index) => {
+      const floor = index + 1;
+      const values = estimateFor({ floor });
+      return { key: `F${floor}`, label: `Floor ${floor}`, selected: false,
+        energy: values?.energyKwh, cost: values?.costThb,
+        onClick: () => select({ floor }) };
+    });
+  const breakdownTitle = scope.floor ? `Estimated savings by zone · Floor ${scope.floor}` : "Estimated savings by floor";
+  const energy = estimate?.energyKwh;
+  const cost = estimate?.costThb;
+  const periodLabel = month ? monthLabel(month) : "Jul 2018–Jun 2019";
+  const timeLabel = (hour: number) => `${String(hour >= 24 ? hour - 24 : hour).padStart(2, "0")}:00${hour >= 24 ? " next day" : ""}`;
 
   return (
-    <Section title="Preventable Waste Savings Planner" aside={<span className="aside">{scopeLabel} · {month ? monthLabel(month) : "Jul 2018–Jun 2019"}</span>}>
-      <p className="note">This starts from the recommended plan. Choose how much preventable after-hours load to bring toward its circuit baseline. Energy, cost, and projected load update as you adjust the capture rate.{energyCoverage < 99.9 ? ` Meter coverage for this scope and period is ${energyCoverage.toFixed(1)}%; savings include observed readings only.` : " Meter coverage is complete for this scope and period."}</p>
-      <div className="capture-scenarios" role="group" aria-label="Preventable energy capture scenarios">
-        <span className="capture-scenarios-label">Share of estimated preventable energy captured</span>
-        {[
-          { rate: 50, label: "Conservative", detail: "Capture half" },
-          { rate: 75, label: "Moderate", detail: "Capture three-quarters" },
-          { rate: 100, label: "Full capture", detail: "Capture all" },
-        ].map(({ rate, label, detail }) => <button key={rate} type="button" className={`capture-scenario${selectedPreset === rate ? " active" : ""}`}
-          aria-pressed={selectedPreset === rate} disabled={!hasScenarioData} onClick={() => applyScenario(rate)}>
-          <span>{label}</span><b>{rate}%</b><small>{detail} of estimated surplus</small>
-        </button>)}
-      </div>
-      <label className="slider">
-        <span>{scope.zone ? `Capture in ${scopeLabel}` : "Apply to this scope"} <b>{scopeRate === null ? `Mixed rates · set all to ${rateText(sliderRate)}` : rateText(scopeRate)}</b></span>
-        <input type="range" min={0} max={100} step={0.1} value={sliderRate} disabled={!hasScenarioData}
-          aria-label={`Capture rate for ${scopeLabel}; changing it applies the same rate to all included zones`}
-          onChange={(e) => setCaptureRates(audits.map((audit) => audit.id), +e.target.value)} />
+    <Section title="After-hours Schedule What-if" aside={<span className="aside">{scopeLabel} · {periodLabel}</span>} collapsible defaultOpen={scopeNavigationCount > 0}>
+      <p className="note">Set the weekday switch-off time for lighting and plug circuits classified as preventable in the selected scope. The same time carries across the building, floor, and zone views, with related scope savings shown below. Estimates use historical hourly load above each circuit’s time-of-week baseline and the Recommended Plan’s cut rate for each space; critical standby circuits stay on. Weekend and holiday unoccupied hours are included.</p>
+      <label className="slider schedule-slider">
+        <span>Switch-off time <b>{timeLabel(cutoff)}</b></span>
+        <input type="range" min={17} max={30} step={1} value={cutoff}
+          aria-label={`Weekday after-hours switch-off time for ${scopeLabel}`}
+          onChange={(e) => setCutoff(+e.target.value)} />
+        <span className="slider-ends"><span>17:00</span><span>06:00 next day</span></span>
       </label>
-      <label className="target-energy">
-        <span>Preventable energy to leave on</span>
-        <span className="target-energy-input"><input type="number" min={0} max={availableEnergy / energyUnitScale} step="0.1"
-          value={hasScenarioData ? (remainingEnergy / energyUnitScale).toFixed(1) : ""} disabled={!hasScenarioData}
-          aria-label={`Target preventable energy to leave on in ${energyUnit}`}
-          onChange={(e) => { if (e.target.value !== "") applyEnergyTarget(+e.target.value); }} /><b>{energyUnit}</b></span>
-        <small>Current scope has {kwh(availableEnergy)} of preventable energy. Savings are calculated from the difference; the audit figures above remain the baseline.</small>
-      </label>
-      <details className="scenario-circuit-picker">
-        <summary>Circuits in scenario <b>{selectedPreventableCircuits.length} of {allPreventableCircuits.length}</b></summary>
-        <p>Choose which preventable circuits to include. Critical standby circuits stay excluded.</p>
-        <div className="scenario-floor-tabs" role="tablist" aria-label="Filter scenario circuits by floor">
-          <button type="button" role="tab" aria-selected={circuitPickerFloor === "all"} className={circuitPickerFloor === "all" ? "active" : ""} onClick={() => setCircuitPickerFloor("all")}>All floors</button>
-          {circuitFloors.map((floor) => <button key={floor} type="button" role="tab" aria-selected={circuitPickerFloor === floor}
-            className={circuitPickerFloor === floor ? "active" : ""} onClick={() => setCircuitPickerFloor(floor)}>Floor {floor}</button>)}
-        </div>
-        <div className="scenario-circuit-list">
-          {visibleScenarioCircuits.map(({ circuit, floor, zone }) => {
-            const period = month ? circuit.monthly?.[month] : null;
-            const energy = month ? period?.surplus_kwh : circuit.annual_surplus_kwh;
-            const label = month ? monthLabel(month) : "Jul 2018–Jun 2019";
-            return <label key={circuit.circuit_id} className="scenario-circuit-option">
-              <input type="checkbox" checked={selectedCircuitSet.has(circuit.circuit_id)} onChange={() => toggleCircuit(circuit.circuit_id)} />
-              <span><b>{circuit.circuit_id}</b><small>Floor {floor} · {zoneName(zone)} · {energy === null || energy === undefined ? `No energy readings · ${label}` : `${kwh(energy)} preventable · ${label}`}</small></span>
-            </label>;
-          })}
-        </div>
-        {selectedCircuitIds !== null && <button type="button" className="link" onClick={() => setSelectedCircuitIds(null)}>Select all {allPreventableCircuits.length} circuits</button>}
-      </details>
       <div className="result">
         <div>
-          <span className="stat-label">Estimated Energy Savings</span>
-          <span className="big">{scenario.hasAnyEnergy ? kwh(scenario.energy) : "Unavailable"}</span>
-          <span className="sub">{month ? `in ${monthLabel(month)}` : "Jul 2018–Jun 2019"}</span>
+          <span className="stat-label">Estimated energy savings</span>
+          <span className="big">{energy === undefined ? "Unavailable" : kwh(energy)}</span>
+          <span className="sub">{periodLabel} · {scopeLabel.toLowerCase()}</span>
         </div>
         <div>
-          <span className="stat-label">Estimated Cost Savings (excl. VAT)</span>
-          <span className="big">{scenario.hasAnyCost ? `฿${Math.round(scenario.cost).toLocaleString("en-US")}` : "Unavailable"}</span>
-          <span className="sub">{month ? `in ${monthLabel(month)}` : "Jul 2018–Jun 2019"}</span>
+          <span className="stat-label">Estimated cost savings</span>
+          <span className="big">{cost === undefined ? "Unavailable" : `฿${Math.round(cost).toLocaleString("en-US")}`}</span>
+          <span className="sub">THB · excludes VAT</span>
         </div>
       </div>
-      <div className="audit-sim-loads">
-        <span>Current load <b>{scenario.hasAnyLoad ? `${n3(scenario.currentLoad)} kW` : "Unavailable"}</b></span>
-        <span>Projected load <b>{scenario.baselineAvailable ? `${n3(scenario.projectedLoad)} kW` : "Unavailable"}</b></span>
-        <span>Baseline target <b>{scenario.baselineAvailable ? `${n3(scenario.baselineLoad)} kW` : "Unavailable"}</b></span>
+      {parentScenarios.length > 0 && <div className="schedule-scope-rollup" aria-label="Related scope savings at the same switch-off time">
+        {parentScenarios.map((row) => <button key={row.label} type="button" onClick={() => select(row.target)}>
+          <span>{row.label} at {timeLabel(cutoff)}</span>
+          <b>{row.energy === undefined ? "Unavailable" : kwh(row.energy)}</b>
+          <small><span>Cost savings</span><b>{row.cost === undefined ? "Unavailable" : `฿${Math.round(row.cost).toLocaleString("en-US")}`}</b></small>
+        </button>)}
+      </div>}
+      <div className="schedule-scope-breakdown">
+        <h3>{breakdownTitle}</h3>
+        <div>
+          {breakdownRows.map((row) => <button key={row.key} type="button"
+            className={row.selected ? "active" : ""} aria-pressed={row.selected}
+            onClick={row.onClick}>
+            <span>{row.label}</span>
+            <b>{row.energy === undefined ? "Unavailable" : kwh(row.energy)}</b>
+            <small><span>Cost savings</span><b>{row.cost === undefined ? "Unavailable" : `฿${Math.round(row.cost).toLocaleString("en-US")}`}</b></small>
+          </button>)}
+        </div>
       </div>
+      <p className="note">This is a historical estimate of preventable surplus from the selected switch-off time through the unoccupied period. It assumes eligible circuits are scheduled down to their measured baselines; it does not send commands to building equipment.</p>
     </Section>
   );
+}
+
+function ZoneRecommendation({ audit }: { audit: EnergyAuditZone }) {
+  const rec = recommend(audit);
+  return <Section title={`${zoneName(audit.zone)} recommendation`}
+    aside={<span className="aside">{rec.rate ? `${rec.rate}% cut` : "Keep on"}</span>}>
+    <p className="note">{rec.action}</p>
+    <p className="note">This is a rule-based recommendation using the zone type and circuit labels. Estimated savings update with the schedule time above.</p>
+  </Section>;
 }
 
 function AuditZonePopup({ audit, measure }: { audit: EnergyAuditZone; measure: MapMeasure }) {
@@ -336,9 +257,10 @@ export default function QuestionAPanel({ zones, measure, scope, auditZone, detai
   showPlanner: boolean;
 }) {
   return <>
-    {measure === "audit_load" ? <AfterHoursLoadReadouts zones={zones} /> : <EnergyReadouts zones={zones} />}
-    {measure === "audit_load" && <AuditClassificationMethod />}
-    {measure === "audit_load" && showPlanner && <AuditSavings zones={zones} />}
+    {measure === "audit_load" && showPlanner && auditZone && <ZoneRecommendation audit={auditZone} />}
+    {measure === "audit_load" && !showPlanner && <AfterHoursLoadReadouts zones={zones} />}
+    {measure !== "audit_load" && <EnergyReadouts zones={zones} />}
+    {measure === "audit_load" && showPlanner && <AuditSavings />}
     {measure === "audit_load" && !showPlanner && !scope.floor && <EnergyByFloor zones={zones} />}
     {measure === "audit_load" && !showPlanner && !!scope.floor && <PreventableEnergyByCircuitAndMonth zones={zones} />}
     {auditZone && !showPlanner && <AuditZonePopup audit={auditZone} measure={detailMeasure} />}

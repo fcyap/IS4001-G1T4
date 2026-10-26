@@ -39,6 +39,7 @@ def meta():
         "floors": sorted({z["floor"] for z in store.registry}),
         "zones": store.registry,
         "energy_audit": store.energy_audit,
+        "afterhours_timing": store.afterhours_timing,
         "months": store.months,
         "office_days": store.office_days,
         "rules": {"raise_step_c": qc.RAISE_STEP_C, "max_raise_c": qc.MAX_RAISE_C, "whatif_limit_c": WHATIF_LIMIT_C,

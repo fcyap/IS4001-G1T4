@@ -4,7 +4,7 @@ import { useState } from "react";
 import { api, type EnergyAuditZone, type ZoneInfo } from "../lib/api";
 import { useData, useFetch } from "../lib/data";
 import { kwh, n0 } from "../lib/format";
-import { OFFICE_AC_THB_PER_KWH, recommend } from "../lib/plan";
+import { OFFICE_AC_THB_PER_KWH, plannedScheduleSavings, recommend } from "../lib/plan";
 import { monthLabel, useStore } from "../lib/store";
 import { zoneUse } from "../lib/zones";
 import { Section } from "./PanelPrimitives";
@@ -13,9 +13,11 @@ const thb = (v: number) => `฿${Math.round(v).toLocaleString("en-US")}`;
 const SHOWN = 6;
 
 export default function Plan({ zones }: { zones: ZoneInfo[] }) {
-  const { auditById } = useData();
+  const { auditById, meta } = useData();
   const month = useStore((s) => s.month);
   const topic = useStore((s) => s.topic);
+  const cutoff = useStore((s) => s.auditCutoffHour);
+  const scopeNavigationCount = useStore((s) => s.scopeNavigationCount);
   const captureRates = useStore((s) => s.auditCaptureRates);
   const resetRates = useStore((s) => s.resetAuditCaptureRates);
   const whatif = useStore((s) => s.whatif);
@@ -32,9 +34,9 @@ export default function Plan({ zones }: { zones: ZoneInfo[] }) {
   const audits = zones.map((z) => auditById.get(z.id)).filter((a): a is EnergyAuditZone => !!a);
   const switchOff = audits.map((a) => {
     const rec = recommend(a);
-    const energy = month ? a.monthly[month]?.surplus_kwh ?? 0 : a.annual_surplus_kwh;
-    const cost = month ? a.monthly[month]?.cost_thb ?? 0 : a.annual_cost_thb;
-    return { a, rec, kwh: energy * rec.rate / 100, thb: cost * rec.rate / 100 };
+    const savings = meta ? plannedScheduleSavings(meta, { floor: a.floor, zone: a.zone }, cutoff, month)
+      : { energyKwh: 0, costThb: 0 };
+    return { a, rec, kwh: savings.energyKwh, thb: savings.costThb };
   }).sort((x, y) => y.thb - x.thb);
   const acted = switchOff.filter((r) => r.rec.rate > 0);
   const offKwh = switchOff.reduce((n, r) => n + r.kwh, 0);
@@ -49,9 +51,10 @@ export default function Plan({ zones }: { zones: ZoneInfo[] }) {
   const changedSetpoint = whatif.mode !== "rule" || Object.keys(whatif.overrides).length > 0;
   const reset = () => { resetRates(audits.map((a) => a.id)); setWhatif({ mode: "rule", overrides: {} }); };
   const period = month ? `in ${monthLabel(month)}` : "a year";
+  const cutoffLabel = `${String(cutoff >= 24 ? cutoff - 24 : cutoff).padStart(2, "0")}:00${cutoff >= 24 ? " next day" : ""}`;
 
   return (
-    <Section title="Recommended Plan" aside={<span className="aside">{month ? monthLabel(month) : "Per Year"} · excl. VAT</span>} className="plan">
+    <Section title="Recommended Plan" aside={<span className="aside">{month ? monthLabel(month) : "Per Year"} · off at {cutoffLabel} · excl. VAT</span>} className="plan" collapsible defaultOpen={scopeNavigationCount > 0}>
       <div className="plan-total">
         <span className="stat-label">The plan saves</span>
         <span className="big">{thb(offThb + acKwh * OFFICE_AC_THB_PER_KWH)}</span>
@@ -84,7 +87,7 @@ export default function Plan({ zones }: { zones: ZoneInfo[] }) {
                 <span className={`plan-rate ${rec.rate === 0 ? "off" : ""}`}>{rec.rate === 0 ? "Keep" : `Cut ${rec.rate}%`}</span>
                 <span className="plan-zone-name">
                   <b>Floor {a.floor}, zone {a.zone.slice(1)}{use && <small> · {use.name}</small>}</b>
-                  <small>{rec.action}{custom && ` · you set ${n0(captureRates[a.id])}%`}</small>
+                  <small>{rec.action}{rec.rate > 0 && ` · off at ${cutoffLabel}`}{custom && ` · you set ${n0(captureRates[a.id])}%`}</small>
                 </span>
                 <span className="plan-zone-val">{rec.rate ? thb(saved) : "–"}</span>
               </button>
@@ -99,9 +102,9 @@ export default function Plan({ zones }: { zones: ZoneInfo[] }) {
         {changedZones || changedSetpoint
           ? <><span>You’ve changed {[changedZones && `${changedZones} zone${changedZones > 1 ? "s" : ""}`, changedSetpoint && "the setpoints"].filter(Boolean).join(" and ")} from the plan.</span>
             <button type="button" className="link" onClick={reset}>Reset to the plan</button></>
-          : <span>The simulation below is running this plan. Adjust it there, or click a zone to change just that zone.</span>}
+          : <span>{topic === "afterhours" ? "The schedule slider above updates the after-hours savings in this plan." : "The simulation below is running this plan. Adjust it there, or click a zone to change just that zone."}</span>}
       </div>
-      <p className="note">The plan is rule-based: cut rates follow each zone’s type of space and circuit classification, and the setpoint rule is the one from the Cooling Comfort analysis.
+      <p className="note">The plan is rule-based: cut rates follow each zone’s type of space and circuit classification, while after-hours savings use the switch-off time selected above. The setpoint rule is the one from the Cooling Comfort analysis.
         AC savings are costed at the office-hour tariff, about ฿{OFFICE_AC_THB_PER_KWH.toFixed(2)}/kWh.</p>
     </Section>
   );

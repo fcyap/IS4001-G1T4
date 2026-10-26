@@ -34,6 +34,7 @@ class Store:
     preds: pd.DataFrame             # hourly actual vs baseline, occupied hours
     registry: list[dict]
     energy_audit: list[dict]
+    afterhours_timing: dict[str, list[dict]]
     months: list[str]
     office_days: list[str]
 
@@ -200,6 +201,109 @@ def _energy_audit() -> list[dict]:
     return grouped
 
 
+def _afterhours_timing() -> dict[str, list[dict]]:
+    """Estimate preventable savings at weekday shutdown times from 17:00 through 06:00."""
+    circuits = pd.read_csv(QA_PATH)
+    hourly = pd.read_csv(QA_HOURLY_PATH, parse_dates=["Date"])
+    dynamic = pd.read_csv(QA_DYNAMIC_PATH).set_index(["DayOfWeek", "Hour"])
+    dynamic = {col: dynamic[col].to_dict() for col in dynamic.columns}
+    circuits["floor"] = circuits["Floor"].astype(str).str.extract(r"(\d+)", expand=False).astype(int)
+    circuits["zone"] = circuits["Zone_Col"].astype(str).str.extract(r"^(z\d+)_", expand=False)
+    circuits = circuits[circuits["zone"].notna()]
+    annual_months = {f"{year}-{month:02d}" for year, months in [(2018, range(7, 13)), (2019, range(1, 7))] for month in months}
+    hourly["month"] = hourly["Date"].dt.strftime("%Y-%m")
+    hourly["dow"] = hourly["Date"].dt.dayofweek
+    hourly["hr"] = hourly["Date"].dt.hour
+    workdays = hourly.assign(_date=hourly["Date"].dt.date).groupby("_date")["Is_Occupied"].max().to_dict()
+    is_workday = hourly["Date"].dt.date.map(workdays).to_numpy(dtype=bool)
+    is_unoccupied = hourly["Is_Unoccupied"].to_numpy(dtype=bool)
+    hours = hourly["hr"].to_numpy()
+    months = hourly["month"].to_numpy()
+    dates = hourly["Date"]
+    holidays = set(pd.to_datetime(pd.read_csv(QA_HOLIDAYS_PATH)["Date"]).dt.date)
+    peak = ((dates.dt.dayofweek.to_numpy() < 5) & (~dates.dt.date.isin(holidays))
+            & (hours >= 9) & (hours < 22))
+    rates = np.where(peak, 4.3297, 2.5849)
+    circuit_loads = []
+    for row in circuits.itertuples():
+        column = str(row.Circuit_ID)
+        if column not in hourly:
+            continue
+        observed = hourly[column].to_numpy(dtype=float)
+        if row.Classification == "Preventable Waste":
+            bases = np.array([dynamic.get(column, {}).get((int(d), int(h)), float(row.Baseload_kW))
+                              for d, h in zip(hourly["dow"], hours)])
+            excess = np.where(np.isfinite(observed), np.maximum(observed - bases, 0), 0)
+        else:
+            excess = np.zeros_like(observed)
+        circuit_loads.append((int(row.floor), str(row.zone), row.Classification == "Preventable Waste", observed, excess))
+
+    result: dict[str, list[dict]] = {"building": []}
+    for floor, zone_count in ZONES_PER_FLOOR.items():
+        result[f"F{floor}"] = []
+        for zone_number in range(1, zone_count + 1):
+            result[f"F{floor}:z{zone_number}"] = []
+
+    for cutoff in range(17, 31):
+        if cutoff < 24:
+            weekday_schedule = (hours >= cutoff) | (hours < 8)
+        else:
+            # Cutoffs 24–30 mean midnight through 06:00 on the following day.
+            weekday_schedule = (hours >= cutoff - 24) & (hours < 8)
+        selected = is_unoccupied & (~is_workday | weekday_schedule)
+        monthly_totals: dict[str, dict[str, list[float]]] = {
+            key: {month: [0.0, 0.0, 0.0, 0.0, 0.0] for month in sorted(set(months))} for key in result
+        }
+        annual_totals: dict[str, list[float]] = {key: [0.0, 0.0, 0.0, 0.0, 0.0] for key in result}
+        for floor, zone, preventable, observed, excess in circuit_loads:
+            scopes = ("building", f"F{floor}", f"F{floor}:{zone}")
+            for month in monthly_totals["building"]:
+                month_mask = months == month
+                observed_mask = is_unoccupied & month_mask & np.isfinite(observed)
+                hours_count = int(observed_mask.sum())
+                current_kw = float(observed[observed_mask].sum()) / hours_count if hours_count else 0.0
+                saved_mask = selected & month_mask & np.isfinite(observed)
+                energy = float(excess[saved_mask].sum())
+                cost = float((excess[saved_mask] * rates[saved_mask]).sum())
+                projected_kw = current_kw - energy / hours_count if hours_count else 0.0
+                for scope in scopes:
+                    totals = monthly_totals[scope][month]
+                    totals[0] += energy
+                    totals[1] += cost
+                    totals[2] += current_kw
+                    totals[3] += projected_kw
+                    totals[4] += current_kw if preventable else 0.0
+            annual_mask = np.isin(months, list(annual_months))
+            observed_mask = is_unoccupied & annual_mask & np.isfinite(observed)
+            hours_count = int(observed_mask.sum())
+            current_kw = float(observed[observed_mask].sum()) / hours_count if hours_count else 0.0
+            saved_mask = selected & annual_mask & np.isfinite(observed)
+            energy = float(excess[saved_mask].sum())
+            cost = float((excess[saved_mask] * rates[saved_mask]).sum())
+            projected_kw = current_kw - energy / hours_count if hours_count else 0.0
+            for scope in scopes:
+                totals = annual_totals[scope]
+                totals[0] += energy
+                totals[1] += cost
+                totals[2] += current_kw
+                totals[3] += projected_kw
+                totals[4] += current_kw if preventable else 0.0
+        for scope, by_month in monthly_totals.items():
+            annual = annual_totals[scope]
+            result[scope].append({
+                "cutoff_hour": cutoff,
+                "annual_kwh": round(annual[0], 2),
+                "annual_cost_thb": round(annual[1], 2),
+                "annual_load_kw": round(annual[2], 3),
+                "annual_projected_load_kw": round(annual[3], 3),
+                "annual_preventable_load_kw": round(annual[4], 3),
+                "monthly": {m: {"kwh": round(v[0], 2), "cost_thb": round(v[1], 2),
+                                "load_kw": round(v[2], 3), "projected_load_kw": round(v[3], 3),
+                                "preventable_load_kw": round(v[4], 3)} for m, v in by_month.items()},
+            })
+    return result
+
+
 def load() -> Store:
     pmv = pd.read_csv(qc.COMFORT_DIR / "pmv_15min.csv", parse_dates=["timestamp"])
     pmv = pmv.sort_values(["floor", "zone", "timestamp"]).reset_index(drop=True)
@@ -221,6 +325,7 @@ def load() -> Store:
         pmv=pmv, heatmap=heatmap, inspection=inspection, slopes=slopes, monthly=monthly, preds=preds,
         registry=_zone_registry(zone_summary, slopes, inspection, baseline),
         energy_audit=_energy_audit(),
+        afterhours_timing=_afterhours_timing(),
         months=sorted(pmv["month"].unique()), office_days=office_days)
 
 

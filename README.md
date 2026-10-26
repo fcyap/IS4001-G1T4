@@ -12,7 +12,7 @@ The **Chamchuri 5** button (or Esc from the whole-building view) returns to the 
 **After-hours Waste** (Question A)
 - **Today**: colour zones by mean after-hours circuit load. The panel shows preventable energy and cost and the circuit
   classification (preventable waste, critical standby or mixed). Selecting a zone shows its lighting and plug circuits.
-- **What-if simulation**: the savings planner. Choose how much preventable load to capture and see energy and cost saved.
+- **What-if simulation**: set the weekday after-hours switch-off time from 17:00 through 06:00 the next day and see estimated energy and cost savings for the selected building, floor, or zone from historical hourly circuit readings.
 
 **Cooling Comfort** (Question B)
 - **Today**: colour zones by % of office time too cool, % comfortable, mean PMV, or AC power.
