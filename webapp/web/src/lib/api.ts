@@ -59,7 +59,7 @@ export interface Meta {
   floors: number[];
   zones: ZoneInfo[];
   energy_audit: EnergyAuditZone[];
-  afterhours_timing: Record<string, { cutoff_hour: number; annual_kwh: number; annual_cost_thb: number;
+  afterhours_timing: Record<string, { cutoff_hour: number; start_hour?: number; end_hour?: number; annual_kwh: number; annual_cost_thb: number;
     annual_load_kw: number; annual_projected_load_kw: number; annual_preventable_load_kw: number;
     monthly: Record<string, { kwh: number; cost_thb: number; load_kw: number;
       projected_load_kw: number; preventable_load_kw: number }> }[]>;

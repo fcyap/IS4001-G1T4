@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import Building3D from "./building/Building3D";
 import { DataProvider } from "./lib/data";
 import { useStore } from "./lib/store";
+import Copilot from "./panels/Copilot";
 import Landing from "./panels/Landing";
 import SidePanel from "./panels/SidePanel";
 import Stage from "./panels/Stage";
@@ -38,6 +39,7 @@ export default function App() {
             {home ? <Landing /> : <Stage key={topic} />}
           </section>
         </main>
+        {topic === "afterhours" && <Copilot />}
       </div>
     </DataProvider>
   );

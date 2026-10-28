@@ -19,6 +19,9 @@ interface State {
   measure: MapMeasure;
   auditCaptureRates: Record<string, number>;
   auditCutoffHour: number;
+  auditStartHour: number;
+  auditEndHour: number;
+  auditCircuitExemptions: Record<string, boolean>;
   view: "3d" | "plan";
   hover: string | null;
   whatif: { mode: "global" | "rule"; globalC: number; overrides: Record<string, number> };
@@ -38,6 +41,10 @@ interface State {
   setAuditCaptureRates: (zoneIds: string[], rate: number) => void;
   resetAuditCaptureRates: (zoneIds: string[]) => void;      // back to the recommended plan
   setAuditCutoffHour: (hour: number) => void;
+  setAuditStartHour: (hour: number) => void;
+  setAuditEndHour: (hour: number) => void;
+  toggleCircuitExemption: (circuitId: string) => void;
+  resetCircuitExemptions: () => void;
   setView: (v: "3d" | "plan") => void;
   setHover: (id: string | null) => void;
   setWhatif: (p: Partial<State["whatif"]>) => void;
@@ -73,7 +80,10 @@ export const useStore = create<State>((set, get) => ({
   month: null,
   measure: measureFor(initialTopic, startMode),
   auditCaptureRates: {},
-  auditCutoffHour: 17,
+  auditCutoffHour: 18,
+  auditStartHour: 18,
+  auditEndHour: 8,
+  auditCircuitExemptions: {},
   view: q.get("view") === "plan" ? "plan" : "3d",
   hover: null,
   whatif: { mode: "rule", globalC: 1, overrides: {} },
@@ -133,7 +143,13 @@ export const useStore = create<State>((set, get) => ({
   } })),
   resetAuditCaptureRates: (zoneIds) => set((s) => ({ auditCaptureRates: Object.fromEntries(
     Object.entries(s.auditCaptureRates).filter(([id]) => !zoneIds.includes(id))) })),
-  setAuditCutoffHour: (hour) => set({ auditCutoffHour: hour }),
+  setAuditCutoffHour: (hour) => set({ auditCutoffHour: hour, auditStartHour: hour }),
+  setAuditStartHour: (hour) => set({ auditStartHour: hour, auditCutoffHour: hour }),
+  setAuditEndHour: (hour) => set({ auditEndHour: hour }),
+  toggleCircuitExemption: (circuitId) => set((s) => ({
+    auditCircuitExemptions: { ...s.auditCircuitExemptions, [circuitId]: !s.auditCircuitExemptions[circuitId] }
+  })),
+  resetCircuitExemptions: () => set({ auditCircuitExemptions: {} }),
   setView: (view) => set({ view }),
   setHover: (hover) => set({ hover }),
   setWhatif: (p) => set((s) => ({ whatif: { ...s.whatif, ...p } })),

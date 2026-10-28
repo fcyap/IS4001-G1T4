@@ -631,7 +631,7 @@ export default function SidePanel() {
       </> : planFirst ? <>
         <Overview zones={zones} />
         {detail}
-        <Plan zones={zones} />
+        {!auditLayer && <Plan zones={zones} />}
       </> : detail}
     </div>
   );

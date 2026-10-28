@@ -236,27 +236,38 @@ def _afterhours_timing() -> dict[str, list[dict]]:
             excess = np.where(np.isfinite(observed), np.maximum(observed - bases, 0), 0)
         else:
             excess = np.zeros_like(observed)
-        circuit_loads.append((int(row.floor), str(row.zone), row.Classification == "Preventable Waste", observed, excess))
+        circuit_loads.append((int(row.floor), str(row.zone), column, row.Classification == "Preventable Waste", observed, excess))
 
     result: dict[str, list[dict]] = {"building": []}
     for floor, zone_count in ZONES_PER_FLOOR.items():
         result[f"F{floor}"] = []
         for zone_number in range(1, zone_count + 1):
             result[f"F{floor}:z{zone_number}"] = []
+    for item in circuit_loads:
+        result[f"circuit:{item[2]}"] = []
 
-    for cutoff in range(17, 31):
-        if cutoff < 24:
-            weekday_schedule = (hours >= cutoff) | (hours < 8)
+    combinations = []
+    # start_hour: 17 to 23; end_hour: 5 to 8
+    for s_hr in range(17, 24):
+        for e_hr in range(5, 9):
+            combinations.append((s_hr, e_hr, s_hr))
+    # Legacy cutoffs 24..30 with end_hour = 8
+    for c_hr in range(24, 31):
+        combinations.append((c_hr, 8, c_hr))
+
+    for start_hour, end_hour, cutoff_hour in combinations:
+        if start_hour < 24:
+            weekday_schedule = (hours >= start_hour) | (hours < end_hour)
         else:
             # Cutoffs 24–30 mean midnight through 06:00 on the following day.
-            weekday_schedule = (hours >= cutoff - 24) & (hours < 8)
+            weekday_schedule = (hours >= start_hour - 24) & (hours < end_hour)
         selected = is_unoccupied & (~is_workday | weekday_schedule)
         monthly_totals: dict[str, dict[str, list[float]]] = {
             key: {month: [0.0, 0.0, 0.0, 0.0, 0.0] for month in sorted(set(months))} for key in result
         }
         annual_totals: dict[str, list[float]] = {key: [0.0, 0.0, 0.0, 0.0, 0.0] for key in result}
-        for floor, zone, preventable, observed, excess in circuit_loads:
-            scopes = ("building", f"F{floor}", f"F{floor}:{zone}")
+        for floor, zone, circuit_id, preventable, observed, excess in circuit_loads:
+            scopes = ("building", f"F{floor}", f"F{floor}:{zone}", f"circuit:{circuit_id}")
             for month in monthly_totals["building"]:
                 month_mask = months == month
                 observed_mask = is_unoccupied & month_mask & np.isfinite(observed)
@@ -291,7 +302,9 @@ def _afterhours_timing() -> dict[str, list[dict]]:
         for scope, by_month in monthly_totals.items():
             annual = annual_totals[scope]
             result[scope].append({
-                "cutoff_hour": cutoff,
+                "cutoff_hour": cutoff_hour,
+                "start_hour": start_hour if start_hour < 24 else start_hour - 24,
+                "end_hour": end_hour,
                 "annual_kwh": round(annual[0], 2),
                 "annual_cost_thb": round(annual[1], 2),
                 "annual_load_kw": round(annual[2], 3),
