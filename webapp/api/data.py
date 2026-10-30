@@ -77,13 +77,7 @@ def _zone_registry(zone_summary, slopes, inspection, baseline) -> list[dict]:
 
 
 def _energy_audit() -> list[dict]:
-    """Normalize Question A circuits and calculate observed monthly opportunities.
-
-    The UI's annual view uses the notebook's clean training window (Jul 2018-Jun 2019),
-    summed from the same hourly readings used for the monthly view. This keeps annual
-    totals additive and avoids mixing the notebook's 18-month normalized CSV with one-year
-    monthly values.
-    """
+    """Normalize Question A circuits and calculate observed monthly opportunities."""
     circuits = pd.read_csv(QA_PATH)
     hourly = pd.read_csv(QA_HOURLY_PATH, parse_dates=["Date"])
     hourly["month"] = hourly["Date"].dt.strftime("%Y-%m")
@@ -91,10 +85,8 @@ def _energy_audit() -> list[dict]:
     hourly["hr"] = hourly["Date"].dt.hour
     holidays = set(pd.to_datetime(pd.read_csv(QA_HOLIDAYS_PATH)["Date"]).dt.date)
     dates = hourly["Date"]
-    hourly["is_peak"] = (
-        (dates.dt.dayofweek < 5) & (~dates.dt.date.isin(holidays)) &
-        (dates.dt.hour >= 9) & (dates.dt.hour < 22)
-    )
+    is_wkday = (dates.dt.dayofweek < 5) & (~dates.dt.date.isin(holidays))
+    hourly["is_peak"] = is_wkday & (dates.dt.hour >= 9) & (dates.dt.hour < 22)
     hourly["tariff_thb_per_kwh"] = np.where(hourly["is_peak"], 4.3297, 2.5849)
     circuits["floor"] = circuits["Floor"].astype(str).str.extract(r"(\d+)", expand=False).astype(int)
     circuits["zone"] = circuits["Zone_Col"].astype(str).str.extract(r"^(z\d+)_", expand=False)
@@ -147,11 +139,19 @@ def _energy_audit() -> list[dict]:
             annual_surplus = sum(period["surplus_kwh"] or 0 for period in annual_periods)
             annual_cost = sum(period["cost_thb"] or 0 for period in annual_periods)
             annual_load_kwh = sum((period["unocc_mean_kw"] or 0) * period["unocc_hours"] for period in annual_periods)
+            unocc_mean = round(annual_load_kwh / annual_hours, 3) if annual_hours else 0.0
+
+            cid = str(row.Circuit_ID)
+            ratio = round(float(getattr(row, "Unocc_to_Occ_Ratio", 0.0)), 2)
+            cv = round(float(getattr(row, "OffHours_CV", 0.0)), 2)
+
             items.append({
-                "circuit_id": str(row.Circuit_ID),
+                "circuit_id": cid,
                 "type": str(row.Type),
                 "classification": str(row.Classification),
-                "unocc_mean_kw": round(annual_load_kwh / annual_hours, 3) if annual_hours else None,
+                "unocc_to_occ_ratio": ratio,
+                "offhours_cv": cv,
+                "unocc_mean_kw": unocc_mean if annual_hours else None,
                 "annual_unocc_hours": annual_hours,
                 "annual_expected_unocc_hours": annual_expected_hours,
                 "baseload_kw": float(row.Baseload_kW),

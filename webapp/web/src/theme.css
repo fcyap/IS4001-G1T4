@@ -1065,3 +1065,196 @@ button.rank-row:hover { background: var(--panel-2); border-color: var(--line-2);
   background: transparent;
 }
 
+
+.plan-ai-tag.is-gemini {
+  background: rgba(82, 196, 158, 0.18);
+  color: #52c49e;
+  border: 1px solid rgba(82, 196, 158, 0.35);
+}
+.plan-ai-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.plan-ai-key-btn {
+  background: rgba(16, 28, 47, 0.7);
+  border: 1px solid var(--line-2);
+  color: var(--muted);
+  padding: 4px 8px;
+  border-radius: var(--r-s);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.plan-ai-key-btn.has-key {
+  color: #52c49e;
+  border-color: rgba(82, 196, 158, 0.45);
+}
+.plan-ai-key-btn:hover {
+  color: #fff;
+  border-color: #5fa8e8;
+}
+.plan-ai-key-drawer {
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid rgba(95, 168, 232, 0.3);
+  border-radius: var(--r-s);
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plan-ai-key-drawer-top {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.plan-ai-key-drawer-top strong {
+  font-size: 12px;
+  color: var(--ink);
+}
+.plan-ai-key-drawer-top small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.plan-ai-key-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.plan-ai-key-row input {
+  flex: 1;
+  background: rgba(9, 16, 27, 0.8);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-s);
+  padding: 5px 9px;
+  color: #fff;
+  font-size: 12px;
+}
+.plan-ai-insight-box {
+  padding: 10px 12px;
+  background: rgba(95, 168, 232, 0.06);
+  border-left: 3px solid #5fa8e8;
+  border-radius: 0 var(--r-s) var(--r-s) 0;
+  margin: 10px 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.plan-ai-summary {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+.plan-ai-tariff {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.plan-phases {
+  margin: 12px 0;
+}
+.plan-phase-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plan-phase-card {
+  padding: 9px 11px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-s);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.plan-phase-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+.plan-phase-impact {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--comfy);
+}
+.plan-phase-target {
+  font-size: 11px;
+  color: #72b3f2;
+}
+.plan-phase-action {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.copilot-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.copilot-key-toggle {
+  background: transparent;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-s);
+  padding: 2px 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.copilot-key-toggle.active {
+  border-color: rgba(82, 196, 158, 0.5);
+  background: rgba(82, 196, 158, 0.12);
+}
+.copilot-key-bar {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(9, 16, 27, 0.9);
+  border-bottom: 1px solid var(--line);
+}
+.copilot-key-bar input {
+  flex: 1;
+  background: var(--panel-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-s);
+  padding: 5px 8px;
+  color: #fff;
+  font-size: 11.5px;
+}
+.copilot-key-bar button {
+  background: #5fa8e8;
+  color: #0b1523;
+  border: none;
+  border-radius: var(--r-s);
+  padding: 5px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.circuit-inline-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.circuit-window-selects {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.circuit-window-selects select.mini {
+  padding: 2px 4px;
+  font-size: 11px;
+}
+.plan-circuit-row .plan-zone {
+  cursor: default;
+}
+.plan-circuit-row .plan-rate {
+  cursor: pointer;
+}

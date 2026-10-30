@@ -612,10 +612,9 @@ export default function SidePanel() {
         </>}
       </>}
       {/* Zones and Alerts at the bottom */}
-      {!zone && !(mode === "whatif" && measure === "audit_load") && (auditLayer && measure === "audit_load" ? <>
-        <ZoneGrid zones={zones} measureOverride="audit_load" onZoneSelect={setAuditDetailMeasure} />
-        <ZoneGrid zones={zones} measureOverride="audit_classification" onZoneSelect={setAuditDetailMeasure} />
-      </> : <ZoneGrid zones={zones} />)}
+      {!zone && (!auditLayer || mode !== "whatif") && (
+        <ZoneGrid zones={zones} onZoneSelect={setAuditDetailMeasure} />
+      )}
       {!auditLayer && <Alerts zones={zones} results={results} />}
   </>;
 
@@ -629,7 +628,7 @@ export default function SidePanel() {
           {detail}
         </Section>
       </> : planFirst ? <>
-        <Overview zones={zones} />
+        {!auditLayer && <Overview zones={zones} />}
         {detail}
         {!auditLayer && <Plan zones={zones} />}
       </> : detail}

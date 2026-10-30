@@ -15,6 +15,8 @@ export interface EnergyAuditCircuit {
   circuit_id: string;
   type: string;
   classification: Exclude<AuditClassification, "Mixed">;
+  unocc_to_occ_ratio?: number;
+  offhours_cv?: number;
   unocc_mean_kw: number | null; baseload_kw: number;
   annual_unocc_hours: number; annual_expected_unocc_hours: number;
   annual_surplus_kwh: number;
@@ -68,6 +70,7 @@ export interface Meta {
   rules: { raise_step_c: number; max_raise_c: number; whatif_limit_c: number; raise_if_too_cool: number; too_warm_tolerance: number; office_periods_per_year: number };
   heatmap: HeatCell[];
   monthly: MonthlyRec[];
+  ai_configured?: boolean;
 }
 
 export interface Summary {
@@ -110,6 +113,49 @@ export interface ScenarioBody {
   mode: "global" | "rule"; global_c: number; overrides: Record<string, number>; months: string[];
 }
 
+export interface CircuitWindowOverride {
+  start_hour: number;
+  end_hour: number;
+}
+
+export interface AIChatRequest {
+  message: string;
+  history: { role: "user" | "bot"; text: string }[];
+  floor?: number;
+  zone?: string;
+  month?: string | null;
+  start_hour: number;
+  end_hour: number;
+  exemptions: string[];
+  circuit_windows?: Record<string, CircuitWindowOverride>;
+  api_key?: string | null;
+}
+
+export interface AIChatResponse {
+  source: "gemini" | "telemetry_engine";
+  reply: string;
+}
+
+const GEMINI_KEY_STORAGE = "chamchuri_gemini_api_key";
+
+export function getStoredGeminiKey(): string {
+  try {
+    return localStorage.getItem(GEMINI_KEY_STORAGE) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function setStoredGeminiKey(key: string): void {
+  try {
+    if (key.trim()) localStorage.setItem(GEMINI_KEY_STORAGE, key.trim());
+    else localStorage.removeItem(GEMINI_KEY_STORAGE);
+    window.dispatchEvent(new CustomEvent("gemini-key-change"));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 async function req<T>(url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(url, body === undefined ? { signal } : {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal,
@@ -130,4 +176,5 @@ export const api = {
     if (zone !== undefined) q.set("zone", zone);
     return req<LoadPattern>(`/api/load?${q}`, undefined, s);
   },
+  aiChat: (b: AIChatRequest, s?: AbortSignal) => req<AIChatResponse>("/api/ai/chat", b, s),
 };

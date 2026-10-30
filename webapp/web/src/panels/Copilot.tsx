@@ -1,20 +1,38 @@
 import { useState, useRef, useEffect } from "react";
+import { api, getStoredGeminiKey, setStoredGeminiKey } from "../lib/api";
 import { useData } from "../lib/data";
 import { kwh } from "../lib/format";
-import { useStore } from "../lib/store";
-import { plannedScheduleSavings } from "../lib/plan";
+import { monthLabel, scopeLabel, useStore } from "../lib/store";
+import { buildEffectiveCircuitWindows, plannedScheduleSavings } from "../lib/plan";
 
 interface ChatMessage {
   id: string;
   sender: "bot" | "user";
   text: string;
   timestamp: string;
+  source?: "gemini" | "telemetry_engine";
+}
+
+function formatSafeMarkdown(raw: string): string {
+  const escaped = raw
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return escaped
+    .replace(/^### (.*)$/gm, "<h4 class='copilot-heading'>$1</h4>")
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.*?)\*/g, "<em>$1</em>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\n/g, "<br/>");
 }
 
 export default function Copilot() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
+  const [showKeyBar, setShowKeyBar] = useState(false);
+  const [keyDraft, setKeyDraft] = useState(() => getStoredGeminiKey());
+  const [storedKey, setStoredKey] = useState(() => getStoredGeminiKey());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { meta } = useData();
@@ -22,126 +40,134 @@ export default function Copilot() {
   const startHour = useStore((s) => s.auditStartHour);
   const endHour = useStore((s) => s.auditEndHour);
   const month = useStore((s) => s.month);
+  const floorWindows = useStore((s) => s.auditFloorWindows);
+  const zoneWindows = useStore((s) => s.auditZoneWindows);
   const circuitExemptions = useStore((s) => s.auditCircuitExemptions);
+  const circuitWindows = useStore((s) => s.auditCircuitWindows);
 
-  const estimate = meta ? plannedScheduleSavings(meta, scope, startHour, endHour, month, circuitExemptions) : null;
-  const currentSavingsKwh = estimate?.energyKwh ? kwh(estimate.energyKwh) : "172,400 kWh";
-  const currentSavingsCost = estimate?.costThb ? `฿${Math.round(estimate.costThb).toLocaleString("en-US")}` : "฿595,200";
+  useEffect(() => {
+    const onKeyChange = () => {
+      const k = getStoredGeminiKey();
+      setStoredKey(k);
+      setKeyDraft(k);
+    };
+    window.addEventListener("gemini-key-change", onKeyChange);
+    return () => window.removeEventListener("gemini-key-change", onKeyChange);
+  }, []);
 
-  const initialGreeting: ChatMessage = {
-    id: "welcome",
-    sender: "bot",
-    text: `Hello! I'm your Chamchuri 5 Building Copilot. I analyze after-hours telemetry across all 7 floors and 65 sub-metered circuits.\n\nCurrent simulation settings:\n• Active curfew: **${startHour}:00 → 0${endHour}:00**\n• Estimated savings: **${currentSavingsKwh}** (${currentSavingsCost} THB/yr)\n\nAsk me anything or select a prompt below!`,
-    timestamp: "Just now",
-  };
+  const estimate = meta
+    ? plannedScheduleSavings(
+        meta,
+        scope,
+        startHour,
+        endHour,
+        month,
+        circuitExemptions,
+        circuitWindows,
+        floorWindows,
+        zoneWindows
+      )
+    : null;
+  const endFmt = String(endHour).padStart(2, "0");
+  const currentSavingsKwh = estimate ? kwh(estimate.energyKwh) : "…";
+  const currentSavingsCost = estimate
+    ? `฿${Math.round(estimate.costThb).toLocaleString("en-US")}`
+    : "…";
+  const activeScopeName = scopeLabel(scope);
+  const activePeriodName = month ? monthLabel(month) : "Annual (Jul 2018–Jun 2019)";
+  const hasGemini = !!meta?.ai_configured || !!storedKey;
+  const manualOverrideCount =
+    Object.keys(floorWindows).length +
+    Object.keys(zoneWindows).length +
+    Object.keys(circuitExemptions).filter((id) => circuitExemptions[id]).length +
+    Object.keys(circuitWindows).length;
 
-  const [messages, setMessages] = useState<ChatMessage[]>([initialGreeting]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, typing]);
+  }, [messages, typing, open]);
 
-  const handleSend = (userText: string) => {
-    if (!userText.trim()) return;
+  const handleSaveKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    setStoredGeminiKey(keyDraft);
+    setStoredKey(keyDraft.trim());
+    setShowKeyBar(false);
+  };
+
+  const handleSend = async (userText: string) => {
+    const clean = userText.trim();
+    if (!clean || typing) return;
 
     const userMsg: ChatMessage = {
       id: `u-${Date.now()}`,
       sender: "user",
-      text: userText,
-      timestamp: "Now",
+      text: clean,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
+
+    const historyPayload = messages.slice(-6).map((m) => ({
+      role: m.sender,
+      text: m.text,
+    }));
 
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setTyping(true);
 
-    setTimeout(() => {
-      const responseText = generateSimulatedResponse(userText.toLowerCase());
+    try {
+      const exemptions = Object.keys(circuitExemptions).filter((id) => circuitExemptions[id]);
+      const effectiveCircuitWindows = buildEffectiveCircuitWindows(
+        meta,
+        startHour,
+        endHour,
+        floorWindows,
+        zoneWindows,
+        circuitWindows
+      );
+      const res = await api.aiChat({
+        message: clean,
+        history: historyPayload,
+        floor: scope.floor,
+        zone: scope.zone,
+        month,
+        start_hour: startHour,
+        end_hour: endHour,
+        exemptions,
+        circuit_windows: effectiveCircuitWindows,
+        api_key: storedKey || null,
+      });
+
       const botMsg: ChatMessage = {
         id: `b-${Date.now()}`,
         sender: "bot",
-        text: responseText,
-        timestamp: "Now",
+        text: res.reply,
+        source: res.source,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
-      setTyping(false);
       setMessages((prev) => [...prev, botMsg]);
-    }, 700);
-  };
-
-  const generateSimulatedResponse = (q: string): string => {
-    if (q.includes("plan") || q.includes("recommend") || q.includes("strategy") || q.includes("summarize")) {
-      return (
-        `### 📋 Recommended Building Action Plan\n\n` +
-        `Based on our 18-month telemetry audit across 65 sub-meters, here is the optimal strategy:\n\n` +
-        `1. **BEMS Curfew Relays (Floors 2–7 Offices & Labs)**:\n` +
-        `   • Schedule automated shutdown at **${startHour}:00**, releasing at **0${endHour}:00**.\n` +
-        `   • Yields **${currentSavingsKwh}** (${currentSavingsCost} THB/yr).\n` +
-        `   • Standard office circuits drop to quiescent standby (~79.0 kW building-wide).\n\n` +
-        `2. **PIR Occupancy Automation (Stairs & Corridors)**:\n` +
-        `   • Install motion sensors on secondary lighting to eliminate continuous overnight burning.\n\n` +
-        `3. **24/7 Protected Whitelist**:\n` +
-        `   • Floor 1 Zone 2 IT Server Room (**8.39 kW**) and central plant are permanently exempted to avoid network disruption.`
-      );
+    } catch {
+      const botMsg: ChatMessage = {
+        id: `b-${Date.now()}`,
+        sender: "bot",
+        text: `### 🤖 Telemetry Summary (${activeScopeName})\n\nEnforcing the **${startHour}:00 → ${endFmt}:00** curfew across **${activeScopeName}** (${activePeriodName}) recovers **${currentSavingsKwh}** and saves **${currentSavingsCost}** (excl. VAT).`,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setMessages((prev) => [...prev, botMsg]);
+    } finally {
+      setTyping(false);
     }
-
-    if (q.includes("floor 1") || q.includes("hotspot") || q.includes("worst")) {
-      return (
-        `### ⚡ Floor 1 Forensic Audit\n\n` +
-        `**Floor 1 is the #1 after-hours energy consumer** in Chamchuri 5:\n\n` +
-        `• **Exterior Facade & Corridors (Zone 4)**: Consistently burns ~35.9 kW after 17:00, representing over **60% of evening lighting waste**.\n` +
-        `• **IT Server Room (Zone 2)**: Draws a continuous, unvarying **8.39 kW plug load** (verified critical standby, zero seasonal variance).\n\n` +
-        `**Recommendation**: Install astronomical timer relays on Zone 4 architectural lights at 22:00, saving an estimated **฿185,000 THB/yr** under MEA peak tariffs.`
-      );
-    }
-
-    if (q.includes("whitelist") || q.includes("server") || q.includes("standby") || q.includes("critical")) {
-      return (
-        `### 🛡️ Whitelisted Circuits Rationale\n\n` +
-        `Through unsupervised K-Means clustering, **4 out of 65 circuits** are classified as **Critical Standby**:\n\n` +
-        `• **Floor 1 Zone 2 Plug (` + "`z2_Plug`" + `)**: Central campus IT Server Room. Baseline floor is **8.39 kW** with off-hours CV of 0.18.\n` +
-        `• **Plant & Pump Equipment**: Continuous mission-critical operations.\n\n` +
-        `**Security Guardrail**: These circuits are locked and excluded from curfew sweeps to prevent catastrophic data/network outages.`
-      );
-    }
-
-    if (q.includes("delay") || q.includes("20:00") || q.includes("late") || q.includes("timing")) {
-      return (
-        `### 🕒 Curfew Timing Impact (18:00 vs 20:00)\n\n` +
-        `Delaying the evening curfew from 18:00 to 20:00:\n\n` +
-        `• **Energy Loss**: ~18,500 kWh uncaptured over the academic year.\n` +
-        `• **Financial Penalty**: **~฿80,100 THB** additional electricity cost.\n` +
-        `• **Why so expensive?** The 18:00–20:00 window falls under MEA's **Peak Time-of-Use rate (฿4.3297/kWh)**, which is 67% higher than the off-peak night rate (฿2.5849/kWh).\n\n` +
-        `**Suggested compromise**: Keep the 18:00 BEMS sweep active, and provide manual 2-hour wall-switch overrides for late-working researchers.`
-      );
-    }
-
-    if (q.includes("light") || q.includes("plug") || q.includes("difference")) {
-      return (
-        `### 🔌 Lighting vs. Plug Load Characteristics\n\n` +
-        `• **Lighting Circuits (33 sub-meters)**: Driven by human schedule and security timers. Can be 100% eliminated after-hours in unoccupied spaces via automated contactors.\n` +
-        `• **Plug Circuits (32 sub-meters)**: Contain both phantom vampire load (idle monitors, chargers at ~15W) and active desktop computers left running. The $P_{2.5}$ calibration filters phantom vampire baseload from true preventable machine operation.`
-      );
-    }
-
-    return (
-      `### 🤖 Copilot Analysis\n\n` +
-      `Regarding *"q"*: In the current scope (**${scope.floor ? `Floor ${scope.floor}` : "Whole Building"}**), ` +
-      `enforcing the **${startHour}:00 → 0${endHour}:00** curfew sweep recovers **${currentSavingsKwh}** of preventable waste, ` +
-      `saving **${currentSavingsCost} THB/year** under MEA Schedule 4.2 TOU rates.\n\n` +
-      `Would you like me to analyze a specific floor, explain the whitelisted server room, or simulate a different curfew time?`
-    );
   };
 
   const PROMPT_CHIPS = [
-    "💡 Summarize Action Plan",
-    "⚡ Why is Floor 1 the biggest hotspot?",
-    "🛡️ Which circuits are whitelisted?",
-    "🕒 What if we delay curfew to 20:00?",
+    "🎛️ What did my manual adjustments change?",
+    "⚡ Why is Floor 1 Zone 1 the biggest hotspot?",
+    "🔒 Which 4 circuits are locked ON 24/7?",
+    "💡 Summarize the active curfew savings",
   ];
 
   return (
     <>
-      {/* Floating Action Button */}
       <button
         type="button"
         className={`copilot-fab ${open ? "active" : ""}`}
@@ -153,7 +179,6 @@ export default function Copilot() {
         {!open && <span className="copilot-fab-dot" />}
       </button>
 
-      {/* Slide-Up Chat Drawer */}
       {open && (
         <div className="copilot-modal">
           <div className="copilot-header">
@@ -161,27 +186,76 @@ export default function Copilot() {
               <span className="copilot-avatar">✨</span>
               <div>
                 <strong>Chamchuri 5 AI Copilot</strong>
-                <small>Autonomous Facility Diagnostics</small>
+                <small>
+                  {hasGemini ? "Gemini 2.5 Flash · Live Dashboard & Telemetry" : "Telemetry Diagnostics · Click 🔑 for Gemini AI"}
+                </small>
               </div>
             </div>
-            <button type="button" className="copilot-close" onClick={() => setOpen(false)} aria-label="Close chat">
-              ✕
-            </button>
+            <div className="copilot-header-actions">
+              <button
+                type="button"
+                className={`copilot-key-toggle ${hasGemini ? "active" : ""}`}
+                onClick={() => setShowKeyBar((v) => !v)}
+                title={hasGemini ? "Gemini API key active" : "Set Gemini API key"}
+              >
+                🔑
+              </button>
+              <button type="button" className="copilot-close" onClick={() => setOpen(false)} aria-label="Close chat">
+                ✕
+              </button>
+            </div>
           </div>
 
+          {showKeyBar && (
+            <form className="copilot-key-bar" onSubmit={handleSaveKey}>
+              <input
+                type="password"
+                placeholder={meta?.ai_configured ? "Server .env key active (optional override)…" : "Paste Gemini API Key (AIzaSy…)"}
+                value={keyDraft}
+                onChange={(e) => setKeyDraft(e.target.value)}
+              />
+              <button type="submit">Save</button>
+            </form>
+          )}
+
           <div className="copilot-body">
+            {/* Always-live welcome & context card */}
+            <div className="copilot-msg bot">
+              <div className="copilot-msg-bubble">
+                <p>
+                  Ask me anything about the after-hours energy audit across all 7 floors and 65 circuits in{" "}
+                  <strong>Chamchuri 5</strong>, or about any manual adjustments you make on the dashboard.
+                </p>
+                <p>
+                  <strong>Active Dashboard State:</strong>
+                  <br />• Scope: <strong>{activeScopeName}</strong> ({activePeriodName})
+                  <br />• Building Default: <strong>{startHour}:00 → {endFmt}:00</strong>
+                  {manualOverrideCount > 0 && (
+                    <>
+                      <br />• Manual Overrides (Floor/Zone/Circuit): <strong>{manualOverrideCount} active</strong>
+                    </>
+                  )}
+                  <br />• Simulated Savings: <strong>{currentSavingsKwh}</strong> (<strong>{currentSavingsCost}</strong> excl. VAT)
+                </p>
+                <span className="copilot-msg-time">Live Context</span>
+              </div>
+            </div>
+
             {messages.map((m) => (
               <div key={m.id} className={`copilot-msg ${m.sender}`}>
                 <div className="copilot-msg-bubble">
                   {m.text.split("\n\n").map((para, i) => (
-                    <p key={i} dangerouslySetInnerHTML={{
-                      __html: para
-                        .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-                        .replace(/• /g, "• ")
-                        .replace(/### (.*)/g, "<h4 class='copilot-heading'>$1</h4>")
-                    }} />
+                    <p
+                      key={i}
+                      dangerouslySetInnerHTML={{
+                        __html: formatSafeMarkdown(para),
+                      }}
+                    />
                   ))}
-                  <span className="copilot-msg-time">{m.timestamp}</span>
+                  <span className="copilot-msg-time">
+                    {m.timestamp}
+                    {m.sender === "bot" && m.source === "gemini" ? " · Gemini AI" : ""}
+                  </span>
                 </div>
               </div>
             ))}
@@ -205,6 +279,7 @@ export default function Copilot() {
                 type="button"
                 className="copilot-chip"
                 onClick={() => handleSend(chip)}
+                disabled={typing}
               >
                 {chip}
               </button>
@@ -220,11 +295,11 @@ export default function Copilot() {
           >
             <input
               type="text"
-              placeholder="Ask about after-hours waste, server rooms, or tariffs…"
+              placeholder="Ask about any floor, circuit, or manual schedule change…"
               value={input}
               onChange={(e) => setInput(e.target.value)}
             />
-            <button type="submit" disabled={!input.trim()}>
+            <button type="submit" disabled={!input.trim() || typing}>
               Send
             </button>
           </form>

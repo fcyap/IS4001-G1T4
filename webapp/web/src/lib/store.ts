@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ScenarioBody } from "./api";
+import type { CircuitWindowOverride, ScenarioBody } from "./api";
 
 export type Topic = "home" | "afterhours" | "comfort";   // landing page, Question A, Question B
 export type Mode = "overview" | "whatif" | "replay";
@@ -19,9 +19,12 @@ interface State {
   measure: MapMeasure;
   auditCaptureRates: Record<string, number>;
   auditCutoffHour: number;
-  auditStartHour: number;
-  auditEndHour: number;
-  auditCircuitExemptions: Record<string, boolean>;
+  auditStartHour: number;           // Whole-building default start hour (17:00)
+  auditEndHour: number;             // Whole-building default end hour (08:00)
+  auditFloorWindows: Record<number, CircuitWindowOverride>;     // Manual floor overrides: floor -> {start_hour, end_hour}
+  auditZoneWindows: Record<string, CircuitWindowOverride>;      // Manual zone overrides: "F2:z1" -> {start_hour, end_hour}
+  auditCircuitExemptions: Record<string, boolean>;              // Manual circuit ON 24/7 exemptions
+  auditCircuitWindows: Record<string, CircuitWindowOverride>;   // Manual circuit window overrides
   view: "3d" | "plan";
   hover: string | null;
   whatif: { mode: "global" | "rule"; globalC: number; overrides: Record<string, number> };
@@ -43,7 +46,13 @@ interface State {
   setAuditCutoffHour: (hour: number) => void;
   setAuditStartHour: (hour: number) => void;
   setAuditEndHour: (hour: number) => void;
+  setFloorWindow: (floor: number, start_hour: number, end_hour: number) => void;
+  clearFloorWindow: (floor: number) => void;
+  setZoneWindow: (zoneId: string, start_hour: number, end_hour: number) => void;
+  clearZoneWindow: (zoneId: string) => void;
   toggleCircuitExemption: (circuitId: string) => void;
+  setCircuitWindow: (circuitId: string, start_hour: number, end_hour: number) => void;
+  clearCircuitWindow: (circuitId: string) => void;
   resetCircuitExemptions: () => void;
   setView: (v: "3d" | "plan") => void;
   setHover: (id: string | null) => void;
@@ -80,10 +89,13 @@ export const useStore = create<State>((set, get) => ({
   month: null,
   measure: measureFor(initialTopic, startMode),
   auditCaptureRates: {},
-  auditCutoffHour: 18,
-  auditStartHour: 18,
+  auditCutoffHour: 17,
+  auditStartHour: 17,
   auditEndHour: 8,
+  auditFloorWindows: {},
+  auditZoneWindows: {},
   auditCircuitExemptions: {},
+  auditCircuitWindows: {},
   view: q.get("view") === "plan" ? "plan" : "3d",
   hover: null,
   whatif: { mode: "rule", globalC: 1, overrides: {} },
@@ -93,8 +105,6 @@ export const useStore = create<State>((set, get) => ({
 
   // Change question with a short fade: the current view fades out, then the new one slides in (see theme.css).
   navigate: (topic, mode) => {
-    // Mount the new question while the layout still shows the landing page, so its one-off layout cost lands on a
-    // still frame; two frames later the panel and top bar start gliding open.
     const go = () => {
       get().setTopic(topic);
       if (mode) get().setMode(mode);
@@ -107,7 +117,7 @@ export const useStore = create<State>((set, get) => ({
     setTimeout(go, FADE_MS);
   },
   setTopic: (topic) => set((s) => {
-    const mode = modeFor(topic, s.mode);      // keep the mode when the new question has it, e.g. What-if to What-if
+    const mode = modeFor(topic, s.mode);
     return { topic, mode, measure: measureFor(topic, mode), scope: topic === "home" ? {} : s.scope,
       history: topic === "home" ? [] : s.history,
       replay: { ...s.replay, playing: false } };
@@ -123,13 +133,13 @@ export const useStore = create<State>((set, get) => ({
   },
   up: () => {
     const { scope } = get();
-    if (scope.floor === undefined) get().navigate("home");     // already at the whole building: back to the landing page
+    if (scope.floor === undefined) get().navigate("home");
     else set((s) => ({ scope: scope.zone ? { floor: scope.floor } : {},
       scopeNavigationCount: s.scopeNavigationCount + 1 }));
   },
   setMode: (mode) => set((s) => ({
     mode,
-    measure: s.topic === "afterhours" ? "audit_load"           // one layer for after-hours, in Today and What-if
+    measure: s.topic === "afterhours" ? "audit_load"
       : mode === "replay" ? (s.measure === "ac" ? "ac" : "pmv")
       : mode === "whatif" ? "saved"
       : s.measure === "saved" ? "too_cool" : s.measure,
@@ -146,10 +156,55 @@ export const useStore = create<State>((set, get) => ({
   setAuditCutoffHour: (hour) => set({ auditCutoffHour: hour, auditStartHour: hour }),
   setAuditStartHour: (hour) => set({ auditStartHour: hour, auditCutoffHour: hour }),
   setAuditEndHour: (hour) => set({ auditEndHour: hour }),
-  toggleCircuitExemption: (circuitId) => set((s) => ({
-    auditCircuitExemptions: { ...s.auditCircuitExemptions, [circuitId]: !s.auditCircuitExemptions[circuitId] }
+  setFloorWindow: (floor, start_hour, end_hour) => set((s) => ({
+    auditFloorWindows: { ...s.auditFloorWindows, [floor]: { start_hour, end_hour } },
   })),
-  resetCircuitExemptions: () => set({ auditCircuitExemptions: {} }),
+  clearFloorWindow: (floor) => set((s) => {
+    const next = { ...s.auditFloorWindows };
+    delete next[floor];
+    return { auditFloorWindows: next };
+  }),
+  setZoneWindow: (zoneId, start_hour, end_hour) => set((s) => ({
+    auditZoneWindows: { ...s.auditZoneWindows, [zoneId]: { start_hour, end_hour } },
+  })),
+  clearZoneWindow: (zoneId) => set((s) => {
+    const next = { ...s.auditZoneWindows };
+    delete next[zoneId];
+    return { auditZoneWindows: next };
+  }),
+  toggleCircuitExemption: (circuitId) => set((s) => {
+    const nextExempt = !s.auditCircuitExemptions[circuitId];
+    return {
+      auditCircuitExemptions: { ...s.auditCircuitExemptions, [circuitId]: nextExempt },
+    };
+  }),
+  setCircuitWindow: (circuitId, start_hour, end_hour) => set((s) => {
+    const exemptions = { ...s.auditCircuitExemptions };
+    delete exemptions[circuitId];
+    return {
+      auditCircuitExemptions: exemptions,
+      auditCircuitWindows: {
+        ...s.auditCircuitWindows,
+        [circuitId]: { start_hour, end_hour },
+      },
+    };
+  }),
+  clearCircuitWindow: (circuitId) => set((s) => {
+    const windows = { ...s.auditCircuitWindows };
+    delete windows[circuitId];
+    const exemptions = { ...s.auditCircuitExemptions };
+    delete exemptions[circuitId];
+    return { auditCircuitWindows: windows, auditCircuitExemptions: exemptions };
+  }),
+  resetCircuitExemptions: () => set({
+    auditStartHour: 17,
+    auditCutoffHour: 17,
+    auditEndHour: 8,
+    auditFloorWindows: {},
+    auditZoneWindows: {},
+    auditCircuitExemptions: {},
+    auditCircuitWindows: {},
+  }),
   setView: (view) => set({ view }),
   setHover: (hover) => set({ hover }),
   setWhatif: (p) => set((s) => ({ whatif: { ...s.whatif, ...p } })),

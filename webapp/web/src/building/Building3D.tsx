@@ -6,6 +6,7 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { ZoneInfo } from "../lib/api";
 import { AUDIT_CLASS_COLORS, auditValueColor, C, MEASURES } from "../lib/colors";
 import { replayValue, useData, zoneValue } from "../lib/data";
+import { simulatedZoneAuditMetrics } from "../lib/plan";
 import { isAuditMeasure, monthLabel, useStore, zoneName } from "../lib/store";
 import { zoneUse } from "../lib/zones";
 import { FLOORS, FLOOR_H, LIFT, SLAB, ZONE_H, bandShape, coreShape, floorY, footprint, stairSpan } from "./layout";
@@ -21,6 +22,12 @@ function useZoneLook(z: ZoneInfo) {
   const mode = useStore((s) => s.mode);
   const measure = useStore((s) => s.measure);
   const month = useStore((s) => s.month);
+  const startHour = useStore((s) => s.auditStartHour);
+  const endHour = useStore((s) => s.auditEndHour);
+  const circuitExemptions = useStore((s) => s.auditCircuitExemptions);
+  const circuitWindows = useStore((s) => s.auditCircuitWindows);
+  const floorWindows = useStore((s) => s.auditFloorWindows);
+  const zoneWindows = useStore((s) => s.auditZoneWindows);
   const t = useStore((s) => s.replay.t);
   const after = useStore((s) => s.replay.after);
   const home = useStore((s) => s.topic === "home");
@@ -30,27 +37,57 @@ function useZoneLook(z: ZoneInfo) {
     if (!audit) return { value: null, color: C.nodata, display: "No circuit data", hasData: false };
     if (measure === "audit_classification")
       return { value: null, color: AUDIT_CLASS_COLORS[audit.classification], display: `${audit.classification} · ${audit.preventable_count} preventable / ${audit.critical_count} standby`, hasData: true };
+
+    const isWhatIf = mode === "whatif";
+    const sim = isWhatIf
+      ? simulatedZoneAuditMetrics(meta, audit, startHour, endHour, month, circuitExemptions, circuitWindows, floorWindows, zoneWindows)
+      : null;
+
     if (measure === "audit_load") {
-      const value = month ? audit.monthly[month]?.unocc_mean_kw ?? null : audit.unocc_mean_kw;
-      if (value === null) return { value: null, color: C.nodata, display: `No after-hours readings · ${monthLabel(month!)}`, hasData: false };
+      const rawValue = month ? audit.monthly[month]?.unocc_mean_kw ?? null : audit.unocc_mean_kw;
+      if (rawValue === null) return { value: null, color: C.nodata, display: `No after-hours readings · ${monthLabel(month!)}`, hasData: false };
+      const value = isWhatIf && sim?.afterLoadKw !== null && sim?.afterLoadKw !== undefined ? sim.afterLoadKw : rawValue;
       const values = (meta?.energy_audit ?? []).map((item) => month
         ? item.monthly[month]?.unocc_mean_kw : item.unocc_mean_kw).filter((v): v is number => v !== null);
       const max = Math.max(...values, 1);
       const period = month ? monthLabel(month) : "Jul 2018–Jun 2019 average";
-      const shown = value < 1 ? value.toFixed(3) : value.toFixed(1);
+      const fmtKw = (n: number) => (n < 1 ? n.toFixed(2) : n.toFixed(1));
+      if (isWhatIf && sim && sim.savedKwh > 0) {
+        return {
+          value,
+          color: auditValueColor(value, max),
+          display: `${fmtKw(rawValue)} → ${fmtKw(value)} kW after curfew (−${Math.round(sim.savedKwh).toLocaleString()} kWh)`,
+          hasData: true,
+        };
+      }
       const coverage = month ? audit.monthly[month]?.load_coverage_pct : audit.annual_load_coverage_pct;
       const partial = coverage !== undefined && coverage < 99.9 ? ` · ${coverage}% readings available` : "";
-      return { value, color: auditValueColor(value, max), display: `${shown} kW mean after-hours load · ${period}${partial}`, hasData: true };
+      return { value, color: auditValueColor(value, max), display: `${fmtKw(value)} kW mean after-hours load · ${period}${partial}`, hasData: true };
     }
+
     const monthlyValue = measure === "audit_cost" ? audit.monthly[month ?? ""]?.cost_thb : audit.monthly[month ?? ""]?.surplus_kwh;
-    const value = month ? monthlyValue ?? null : measure === "audit_cost" ? audit.annual_cost_thb : audit.annual_surplus_kwh;
-    if (value === null) return { value: null, color: C.nodata, display: `No circuit readings · ${monthLabel(month!)}`, hasData: false };
+    const rawValue = month ? monthlyValue ?? null : measure === "audit_cost" ? audit.annual_cost_thb : audit.annual_surplus_kwh;
+    if (rawValue === null) return { value: null, color: C.nodata, display: `No circuit readings · ${monthLabel(month!)}`, hasData: false };
+    const value = isWhatIf && sim
+      ? (measure === "audit_cost" ? sim.remainingThb ?? rawValue : sim.remainingKwh ?? rawValue)
+      : rawValue;
     const values = (meta?.energy_audit ?? []).map((item) => month
       ? measure === "audit_cost" ? item.monthly[month]?.cost_thb : item.monthly[month]?.surplus_kwh
       : measure === "audit_cost" ? item.annual_cost_thb : item.annual_surplus_kwh);
     const max = Math.max(...values.filter((v): v is number => v !== null), 1);
     const unit = measure === "audit_cost" ? month ? `THB · ${monthLabel(month)}` : "THB · Jul 2018–Jun 2019"
       : month ? `kWh · ${monthLabel(month)}` : "kWh · Jul 2018–Jun 2019";
+    if (isWhatIf && sim && sim.savedKwh > 0) {
+      const savedStr = measure === "audit_cost"
+        ? `฿${Math.round(sim.savedThb).toLocaleString()} saved`
+        : `${Math.round(sim.savedKwh).toLocaleString()} kWh saved`;
+      return {
+        value,
+        color: auditValueColor(value, max),
+        display: `${savedStr} · ${fmt(value, measure === "audit_cost" ? "THB" : "kWh")} remaining`,
+        hasData: true,
+      };
+    }
     const coverage = month ? audit.monthly[month]?.energy_coverage_pct : audit.annual_energy_coverage_pct;
     const partial = coverage !== undefined && coverage < 99.9 ? ` · ${coverage}% readings available` : "";
     return { value, color: auditValueColor(value, max), display: `${fmt(value, unit)} · ${audit.classification}${partial}`, hasData: true };
@@ -65,7 +102,7 @@ function useZoneLook(z: ZoneInfo) {
 
 const UP: [number, number, number] = [-Math.PI / 2, 0, 0];   // stands an XY-plane extrusion upright
 const STONE = "#8d9bb0";
-const NO_RAYCAST = () => null;                                 // faded/hidden floors must not catch clicks                                       // facade elements stay neutral so colour = data
+const NO_RAYCAST = () => null;                                 // faded/hidden floors must not catch clicks
 
 function Zone({ z, faded }: { z: ZoneInfo; faded: boolean }) {
   const f = footprint(z.floor, z.zone);
@@ -317,9 +354,6 @@ function CameraRig({ zones }: { zones: ZoneInfo[] }) {
   return null;
 }
 
-// The canvas is always the size of the window, anchored to the stage's bottom-right corner; the stage clips it.
-// When the side panel or top bar animates, only the camera's view offset changes, so the canvas never resizes
-// mid-animation (resizing the WebGL buffer costs 70-100 ms a frame).
 const CANVAS_STYLE = { position: "absolute", right: 0, bottom: 0, width: "100vw", height: "100vh" } as const;
 
 /** Keeps the building centred in the visible part of the stage while part of the canvas is clipped off. */
@@ -346,8 +380,6 @@ export default function Building3D() {
   const view = useStore((s) => s.view);
   const home = useStore((s) => s.topic === "home");
   const zones = meta?.zones ?? [];
-  // Clicking empty space goes up one level; in plan view it never leaves the chosen floor.
-  // Only clicks on the canvas itself count: clicks on HTML labels (floor tags) bubble here too.
   const up = (e: MouseEvent) => {
     if (e.type !== "click" || !(e.target instanceof HTMLCanvasElement)) return;
     const { scope: cur, view: v, topic } = useStore.getState();

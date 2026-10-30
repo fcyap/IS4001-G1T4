@@ -27,3 +27,8 @@ data/qns2/baseline/floor*/*
 # OS specific files
 .DS_Store
 Thumbs.db
+
+# Environment variables & API keys
+.env
+.env.*
+!.env.example

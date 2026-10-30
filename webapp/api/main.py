@@ -5,12 +5,12 @@ Demo:  python -m webapp.api                               (also serves webapp/we
 """
 from pathlib import Path
 
-import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .chat import AIChatRequest, generate_ai_chat, resolve_api_key
 from .data import load, qc, records
 from .sim import Scenario, Simulator
 
@@ -47,7 +47,18 @@ def meta():
                   "office_periods_per_year": qc.OFFICE_PERIODS_PER_YEAR},
         "heatmap": records(store.heatmap),
         "monthly": records(store.monthly),
+        "ai_configured": bool(resolve_api_key()),
     }
+
+
+@app.get("/api/ai/status")
+def ai_status():
+    return {"configured": bool(resolve_api_key())}
+
+
+@app.post("/api/ai/chat")
+def ai_chat(body: AIChatRequest):
+    return generate_ai_chat(store, body)
 
 
 @app.post("/api/whatif")

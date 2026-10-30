@@ -4,8 +4,8 @@ import { useData } from "../lib/data";
 import { dateLabel } from "../lib/format";
 import { isAuditMeasure, monthLabel, useStore, type AuditMeasure, type MapMeasure, type Measure } from "../lib/store";
 
-// Layers offered under "Colour Zones by": after-hours waste has one view; cooling comfort depends on the mode.
-const AFTERHOURS_PICKS: MapMeasure[] = ["audit_load"];
+// Layers offered under "Colour Zones by": after-hours waste supports load, energy, cost, and waste status.
+const AFTERHOURS_PICKS: MapMeasure[] = ["audit_load", "audit_kwh", "audit_cost", "audit_classification"];
 const COMFORT_PICKS: Record<string, MapMeasure[]> = {
   overview: ["too_cool", "comfortable", "pmv", "ac"],
   whatif: ["saved", "too_cool", "comfortable", "pmv", "ac"],
@@ -35,6 +35,9 @@ function Legend({ measure }: { measure: Measure }) {
 function AuditLegend({ measure }: { measure: AuditMeasure }) {
   const { meta } = useData();
   const month = useStore((s) => s.month);
+  const mode = useStore((s) => s.mode);
+  const startHour = useStore((s) => s.auditStartHour);
+  const endHour = useStore((s) => s.auditEndHour);
   const values = (meta?.energy_audit ?? []).map((z) => measure === "audit_load"
     ? month ? z.monthly[month]?.unocc_mean_kw : z.unocc_mean_kw
     : month ? measure === "audit_cost" ? z.monthly[month]?.cost_thb : z.monthly[month]?.surplus_kwh
@@ -43,6 +46,7 @@ function AuditLegend({ measure }: { measure: AuditMeasure }) {
   const unit = measure === "audit_load" ? month ? `kW · ${monthLabel(month)}` : "kW · clean-year average"
     : measure === "audit_cost" ? month ? `THB · ${monthLabel(month)}` : "THB · Jul 2018–Jun 2019"
       : month ? `kWh · ${monthLabel(month)}` : "kWh · Jul 2018–Jun 2019";
+  const endFmt = String(endHour).padStart(2, "0");
   return (
     <div className="legend">
       {measure === "audit_classification" ? <div className="legend-keys audit-keys">
@@ -51,7 +55,18 @@ function AuditLegend({ measure }: { measure: AuditMeasure }) {
       </div> : <>
         <div className="legend-bar" style={{ background: `linear-gradient(90deg, ${[0, 0.25, 0.5, 0.75, 1].map((t) => auditValueColor(max * t * t, max)).join(",")})` }} />
         <div className="legend-ends"><span>0 {unit}</span><span>{Math.round(max).toLocaleString()} {unit}</span></div>
-        <div className="legend-keys"><span><i className="k-nodata" />No circuit data</span><span>{month ? `Recorded values for ${monthLabel(month)}` : measure === "audit_load" ? "Mean after-hours circuit load" : "Annual preventable opportunity"}</span></div>
+        <div className="legend-keys">
+          <span><i className="k-nodata" />No circuit data</span>
+          <span>
+            {mode === "whatif"
+              ? `Simulated post-curfew (${startHour}:00–${endFmt}:00)`
+              : month
+                ? `Recorded values for ${monthLabel(month)}`
+                : measure === "audit_load"
+                  ? "Mean after-hours circuit load"
+                  : "Annual preventable opportunity"}
+          </span>
+        </div>
       </>}
     </div>
   );
@@ -148,9 +163,10 @@ export default function Stage() {
           <span>Colour Zones by</span>
           <select value={active} onChange={(e) => setMeasure(e.target.value as MapMeasure)}>
             {picks.map((p) => <option key={p} value={p}>{isAuditMeasure(p)
-              ? p === "audit_load" ? "After-hours Load"
-                : p === "audit_kwh" ? "Preventable Energy"
-                  : "Waste Status"
+              ? p === "audit_load" ? "After-hours Load (kW)"
+                : p === "audit_kwh" ? "Preventable Energy (kWh)"
+                  : p === "audit_cost" ? "Cost Opportunity (THB)"
+                    : "Waste Status"
               : mode === "replay" ? REPLAY_LABEL[p as Measure] : MEASURES[p as Measure].label}</option>)}
           </select>
         </label>
