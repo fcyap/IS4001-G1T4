@@ -131,21 +131,27 @@ def ac_zones(df: pd.DataFrame) -> list[str]:
 PERIOD_HOURS = 0.25                 # 15-min periods
 OFFICE_PERIODS_PER_YEAR = 7776      # office 15-min periods in 2019 (is_occupied count, qb_setpoint_sim);
                                     #   used to annualise savings from the months with sensor data
-RAISE_STEP_C = 1.0                  # the rule raises in 1 °C steps ...
-MAX_RAISE_C = 3.0                   #   ... up to this much above today's temperature
+RAISE_STEP_C = 1.0                  # the rule changes the setpoint in 1 °C steps ...
+MAX_RAISE_C = 5.0                   #   ... up to this much above today's temperature
+MAX_LOWER_C = 5.0                   #   ... or this much below it
+RELIABLE_CHANGE_C = 3.0             # the slopes come from changes of a few degrees: beyond this, extrapolated
 RAISE_IF_TOO_COOL_SHARE = 0.25      # raise again while > 25 % of periods are still too cool
-TOO_WARM_TOLERANCE = 0.10           # roll back if > 10 % of periods would be too warm
+LOWER_IF_TOO_WARM_SHARE = 0.25      # lower again while > 25 % of periods are still too warm
+TOO_WARM_TOLERANCE = 0.10           # roll back a raise if > 10 % of periods would be too warm
+TOO_COOL_TOLERANCE = 0.10           # roll back a lowering if > 10 % of periods would be too cool
 HUMID_TOLERANCE = 0.10              # roll back if the share above RH_LIMIT would exceed
                                     #   max(10 %, today's share)
 
 
-def simulate_setpoint(temp_c, rh_pct, ac_kw, delta_c, kw_per_c, dw_g_per_c=0.0) -> pd.DataFrame:
-    """Effect of running a zone delta_c warmer, one row per 15-min period.
+def simulate_setpoint(temp_c, rh_pct, ac_kw, delta_c, kw_per_c, dw_g_per_c=0.0, ac_cap=None) -> pd.DataFrame:
+    """Effect of running a zone delta_c warmer (negative = cooler), one row per 15-min period.
 
     Assumes the zone air temperature follows the setpoint. Moisture: the humidity ratio rises by
     dw_g_per_c (g/kg per °C, estimated from the data) because the AC removes less moisture;
     with 0 it stays constant and RH simply falls as the air warms.
-    AC saved = kw_per_c * delta_c, never more than the AC actually used in that period.
+    AC saved = kw_per_c * delta_c, never more than the AC actually used in that period. A cooler
+    zone gives a negative saving (extra AC), limited by ac_cap, the zone's highest metered AC power
+    (default: the highest in the periods given).
     """
     index = temp_c.index if isinstance(temp_c, pd.Series) else None
     t = np.asarray(temp_c, float)
@@ -154,7 +160,8 @@ def simulate_setpoint(temp_c, rh_pct, ac_kw, delta_c, kw_per_c, dw_g_per_c=0.0) 
     new_rh = rh_from_humidity_ratio(new_t, w)
     pmv, ppd = pmv_ppd(new_t, new_t, new_rh)
     ac = np.nan_to_num(np.asarray(ac_kw, float), nan=0.0)
-    saved = np.minimum(max(kw_per_c * delta_c, 0.0), ac)
+    cap = ac.max(initial=0.0) if ac_cap is None else ac_cap
+    saved = np.clip(kw_per_c * delta_c, -(cap - ac), ac)
     return pd.DataFrame({"temp_c": new_t, "rh_pct": new_rh, "pmv": pmv, "ppd": ppd,
                          "comfort": comfort_class(pmv), "humid": new_rh > RH_LIMIT,
                          "ac_kw": ac, "saved_kw": saved}, index=index)
@@ -178,18 +185,35 @@ def summarise_sim(sim: pd.DataFrame) -> dict:
     return {"periods": len(sim), **{k: float(v) for k, v in out.items()}}
 
 
-def recommend_raise(temp_c, rh_pct, ac_kw, kw_per_c, dw_g_per_c=0.0) -> tuple[float, str]:
-    """Rule-based setpoint: raise 1 °C at a time while the zone is still too cool; roll the
-    last step back if it would make the zone too warm or too humid. Returns (raise, reason)."""
-    today = simulate_setpoint(temp_c, rh_pct, ac_kw, 0.0, kw_per_c, dw_g_per_c)
+def recommend_raise(temp_c, rh_pct, ac_kw, kw_per_c, dw_g_per_c=0.0, ac_cap=None) -> tuple[float, str]:
+    """Rule-based setpoint: raise 1 °C at a time while the zone is still too cool, or lower it
+    while it is too warm; roll the last step back if it would overshoot the comfort band or make
+    the zone too humid. Returns (change, reason); a negative change is a lower setpoint."""
+    def sim(change):
+        return simulate_setpoint(temp_c, rh_pct, ac_kw, change, kw_per_c, dw_g_per_c, ac_cap)
+
+    today = sim(0.0)
     humid_limit = max(HUMID_TOLERANCE, today["humid"].mean())
     delta, current = 0.0, today
+    if ((today["comfort"] == "too cool").mean() <= RAISE_IF_TOO_COOL_SHARE
+            and (today["comfort"] == "too warm").mean() > LOWER_IF_TOO_WARM_SHARE):
+        while True:
+            if (current["comfort"] == "too warm").mean() <= LOWER_IF_TOO_WARM_SHARE:
+                return delta, "comfortable enough"
+            if delta - RAISE_STEP_C < -MAX_LOWER_C:
+                return delta, f"reached -{MAX_LOWER_C:g} °C cap"
+            trial = sim(delta - RAISE_STEP_C)
+            if (trial["comfort"] == "too cool").mean() > TOO_COOL_TOLERANCE:
+                return delta, "next step too cool (rolled back)"
+            if trial["humid"].mean() > humid_limit:
+                return delta, "next step too humid (rolled back)"
+            delta, current = delta - RAISE_STEP_C, trial
     while True:
         if (current["comfort"] == "too cool").mean() <= RAISE_IF_TOO_COOL_SHARE:
             return delta, "comfortable enough"
         if delta + RAISE_STEP_C > MAX_RAISE_C:
             return delta, f"reached +{MAX_RAISE_C:g} °C cap"
-        trial = simulate_setpoint(temp_c, rh_pct, ac_kw, delta + RAISE_STEP_C, kw_per_c, dw_g_per_c)
+        trial = sim(delta + RAISE_STEP_C)
         if (trial["comfort"] == "too warm").mean() > TOO_WARM_TOLERANCE:
             return delta, "next step too warm (rolled back)"
         if trial["humid"].mean() > humid_limit:

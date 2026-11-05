@@ -256,6 +256,7 @@ function WhatIf({ results, zones }: { results: ZoneResult[]; zones: ZoneInfo[] }
   const nOverrides = Object.keys(whatif.overrides).length;
   const rules = meta?.rules;
   const limit = rules?.whatif_limit_c ?? 5;
+  const reliable = rules?.reliable_change_c ?? 3;
   const extra = b.saved_kwh < 0;          // a lower setpoint costs AC energy instead of saving it
 
   return (
@@ -271,8 +272,8 @@ function WhatIf({ results, zones }: { results: ZoneResult[]; zones: ZoneInfo[] }
         </label>
       ) : (
         <p className="note">
-          Per zone and month: +{rules?.raise_step_c ?? 1} °C steps while over {n0((rules?.raise_if_too_cool ?? 0.25) * 100)} % of office time is too cool, up to +{rules?.max_raise_c ?? 3} °C.
-          Stops before over {n0((rules?.too_warm_tolerance ?? 0.1) * 100)} % is too warm or humid time rises.
+          Per zone and month: {rules?.raise_step_c ?? 1} °C steps up while over {n0((rules?.raise_if_too_cool ?? 0.25) * 100)} % of office time is too cool, to +{rules?.max_raise_c ?? 5} °C, or down while over {n0((rules?.lower_if_too_warm ?? 0.25) * 100)} % is too warm, to -{rules?.max_lower_c ?? 5} °C.
+          Stops before over {n0((rules?.too_warm_tolerance ?? 0.1) * 100)} % overshoots the comfort band or humid time rises.
         </p>
       )}
 
@@ -298,8 +299,8 @@ function WhatIf({ results, zones }: { results: ZoneResult[]; zones: ZoneInfo[] }
           <span className="sub">{breaches.length ? breaches.map((z) => z.id.replace(":", " ")).join(", ") : "No zone too warm, humid or too cool"}</span>
         </div>
       </div>
-      {Math.abs(whatif.mode === "global" ? whatif.globalC : 0) > (rules?.max_raise_c ?? 3) || Object.values(whatif.overrides).some((c) => Math.abs(c) > (rules?.max_raise_c ?? 3))
-        ? <p className="note">Beyond ±{rules?.max_raise_c ?? 3} °C these figures are extrapolated. Treat them as rough.</p>
+      {whatif.mode === "rule" || Math.abs(whatif.globalC) > reliable || Object.values(whatif.overrides).some((c) => Math.abs(c) > reliable)
+        ? <p className="note">Beyond ±{reliable} °C these figures are extrapolated. Treat them as rough.</p>
         : null}
       {!scope.zone && <p className="note">Check-first zones keep today’s setpoint unless overridden. Annual figures assume {n0(meta?.rules.office_periods_per_year ? meta.rules.office_periods_per_year / 4 : 1944)} office hours.</p>}
     </Section>
@@ -547,12 +548,12 @@ function ZoneDetailSection({ zone, result }: { zone: ZoneInfo; result?: ZoneResu
       {recs.length > 0 && (
         <Section title="Rule Recommendation by Month">
           <table className="tbl">
-            <thead><tr><th>Month</th><th>Raise</th><th>Too Cool</th><th>Saved</th><th>Why</th></tr></thead>
+            <thead><tr><th>Month</th><th>Change</th><th>Too Cool</th><th>Saved</th><th>Why</th></tr></thead>
             <tbody>
               {recs.map((r) => (
                 <tr key={r.month} className={month === r.month ? "on" : ""}>
                   <td>{monthLabel(r.month)}</td>
-                  <td>+{r.recommended_raise_c} °C</td>
+                  <td>{signedC(r.recommended_raise_c)}</td>
                   <td>{n0(r.pct_too_cool_before)} → {n0(r.pct_too_cool_after)} %</td>
                   <td>{kwh(r.saved_kwh)}</td>
                   <td className="why">{r.reason}</td>

@@ -164,7 +164,9 @@ with tab_sim:
     z = pmv[(pmv["floor"] == floor) & (pmv["zone"] == zone)]
     months = sorted(z["month"].unique())
     pick = c3.multiselect("Months", months, default=months)
-    delta = c4.select_slider("Raise setpoint by", options=[0, 1, 2, 3], value=1, format_func=lambda d: f"+{d} °C")
+    delta = c4.select_slider("Change setpoint by", options=list(range(-int(qc.MAX_LOWER_C), int(qc.MAX_RAISE_C) + 1)),
+                             value=1, format_func=lambda d: f"{d:+d} °C")
+    zone_cap = z["ac_kw"].max()
     z = z[z["month"].isin(pick)]
     s = slopes[(slopes["floor"] == floor) & (slopes["zone"] == zone)].iloc[0]
 
@@ -175,8 +177,8 @@ with tab_sim:
         st.info("Pick at least one month.")
         st.stop()
 
-    today = simulate_setpoint(z["temp_c"], z["rh_pct"], z["ac_kw"], 0, s["saving_kw_per_c"], s["moisture_g_per_kg_per_c"])
-    new = simulate_setpoint(z["temp_c"], z["rh_pct"], z["ac_kw"], delta, s["saving_kw_per_c"], s["moisture_g_per_kg_per_c"])
+    today = simulate_setpoint(z["temp_c"], z["rh_pct"], z["ac_kw"], 0, s["saving_kw_per_c"], s["moisture_g_per_kg_per_c"], zone_cap)
+    new = simulate_setpoint(z["temp_c"], z["rh_pct"], z["ac_kw"], delta, s["saving_kw_per_c"], s["moisture_g_per_kg_per_c"], zone_cap)
     a, b = summarise_sim(today), summarise_sim(new)
     annual = b["saved_kwh"] / max(b["periods"], 1) * qc.OFFICE_PERIODS_PER_YEAR
 
@@ -206,12 +208,13 @@ with tab_sim:
 
     rule_delta, rule_reason = ((0.0, "inspect before adjusting") if (floor, zone) in inspect_keys else
                                recommend_raise(z["temp_c"], z["rh_pct"], z["ac_kw"],
-                                               s["saving_kw_per_c"], s["moisture_g_per_kg_per_c"]))
-    st.markdown(f"**Rule-based recommendation for the selected months:** raise by **+{rule_delta:g} °C** "
+                                               s["saving_kw_per_c"], s["moisture_g_per_kg_per_c"], zone_cap))
+    st.markdown(f"**Rule-based recommendation for the selected months:** change by **{rule_delta:+g} °C** "
                 f"({rule_reason}). Rule: raise {qc.RAISE_STEP_C:g} °C while more than "
-                f"{qc.RAISE_IF_TOO_COOL_SHARE:.0%} of office time is too cool; roll back if more than "
-                f"{qc.TOO_WARM_TOLERANCE:.0%} would be too warm or too humid (RH > {qc.RH_LIMIT:g} %); "
-                f"cap +{qc.MAX_RAISE_C:g} °C.")
+                f"{qc.RAISE_IF_TOO_COOL_SHARE:.0%} of office time is too cool, or lower it while more than "
+                f"{qc.LOWER_IF_TOO_WARM_SHARE:.0%} is too warm; roll back if more than "
+                f"{qc.TOO_WARM_TOLERANCE:.0%} would overshoot the comfort band or be too humid (RH > {qc.RH_LIMIT:g} %); "
+                f"cap +{qc.MAX_RAISE_C:g} / -{qc.MAX_LOWER_C:g} °C.")
     st.caption(f"This zone: {s['saving_kw_per_c']:.2f} kW saved per °C ({s['saving_pct_per_c']:.1f} % of its AC, "
                f"{s['source']} estimate); moisture +{s['moisture_g_per_kg_per_c']:.2f} g/kg per °C.")
 

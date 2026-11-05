@@ -11,7 +11,7 @@ floor,zone,periods,pct_too_cool,pct_comfortable,pct_too_warm,pct_humid,median_te
 4,z2,7704,76.05,22.51,1.44,84.61,20.41,69.09,-0.98,True,94.8,False,
 4,z4,6455,88.44,9.78,1.78,17.66,19.26,60.17,-1.36,True,79.4,False,
 4,z5,7838,75.15,23.37,1.48,29.15,20.75,63.07,-0.87,True,96.4,False,
-5,z1,6808,97.33,2.06,0.62,97.09,16.11,76.57,-2.46,True,83.8,True,median office temperature 16.1 °C is implausibly cold
+5,z1,5182,96.49,2.7,0.81,96.18,16.68,75.32,-2.17,True,63.8,True,median office temperature 16.7 °C is implausibly cold
 5,z2,5990,68.71,29.53,1.75,11.82,21.21,61.42,-0.86,True,73.7,False,
 5,z4,7492,77.4,21.44,1.16,78.31,20.51,69.2,-0.96,True,92.2,False,
 5,z5,7885,66.75,30.89,2.36,65.11,21.92,66.84,-0.59,True,97.0,False,

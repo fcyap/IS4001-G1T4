@@ -126,7 +126,7 @@ The what-if uses the same physics as `qb_common.simulate_setpoint`, vectorised o
 - a lower setpoint runs the same in reverse: the air cools, moisture falls, and the AC uses kW-per-°C more per degree,
   capped at the zone's highest metered AC power.
 
-The slopes come from changes of a few degrees, so beyond 3 °C either way (the rule's own cap) the figures are extrapolations.
+The slopes come from changes of a few degrees, so beyond 3 °C either way the figures are extrapolations, including the rule's own changes up to its ±5 °C cap.
 
 The guardrail is checked month by month, like `recommend_raise`.
 

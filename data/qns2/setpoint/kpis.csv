@@ -1,8 +1,8 @@
 kpi,type,definition,today,after,unit,change_pct
-AC energy per office hour (actual),Energy,"AC kWh ÷ office hours, Floors 2-7",366.0,325.2,kWh/h,-11.1
-AC energy per office hour (weather-normalised),Energy,Baseline-model kWh ÷ office hours,363.5,323.0,kWh/h,-11.1
-Too-cool hours,Comfort,% office time with PMV < -0.5,73.7,32.6,%,-55.8
-Comfortable hours,Comfort,% office time with PMV within ±0.5,21.9,60.3,%,175.1
-Too-warm hours,Comfort (guardrail),% office time with PMV > +0.5,4.3,7.1,%,62.6
-Too-humid hours,Comfort (guardrail),% office time with RH > 65 %,39.1,28.6,%,-26.7
-Peak cooling demand,Energy,"Highest 15-min AC kW on office days, Floors 2-7",663.4,627.5,kW,-5.4
+AC energy per office hour (actual),Energy,"AC kWh ÷ office hours, Floors 2-7",365.7,324.4,kWh/h,-11.3
+AC energy per office hour (weather-normalised),Energy,Baseline-model kWh ÷ office hours,363.3,322.3,kWh/h,-11.3
+Too-cool hours,Comfort,% office time with PMV < -0.5,73.5,24.0,%,-67.3
+Comfortable hours,Comfort,% office time with PMV within ±0.5,22.1,68.5,%,209.2
+Too-warm hours,Comfort (guardrail),% office time with PMV > +0.5,4.4,7.5,%,71.4
+Too-humid hours,Comfort (guardrail),% office time with RH > 65 %,38.5,25.9,%,-32.6
+Peak cooling demand,Energy,"Highest 15-min AC kW on office days, Floors 2-7",663.4,629.0,kW,-5.2

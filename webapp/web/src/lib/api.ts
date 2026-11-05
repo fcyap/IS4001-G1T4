@@ -67,7 +67,7 @@ export interface Meta {
       projected_load_kw: number; preventable_load_kw: number }> }[]>;
   months: string[];
   office_days: string[];
-  rules: { raise_step_c: number; max_raise_c: number; whatif_limit_c: number; raise_if_too_cool: number; too_warm_tolerance: number; office_periods_per_year: number };
+  rules: { raise_step_c: number; max_raise_c: number; max_lower_c: number; reliable_change_c: number; whatif_limit_c: number; raise_if_too_cool: number; lower_if_too_warm: number; too_warm_tolerance: number; office_periods_per_year: number };
   heatmap: HeatCell[];
   monthly: MonthlyRec[];
   ai_configured?: boolean;
