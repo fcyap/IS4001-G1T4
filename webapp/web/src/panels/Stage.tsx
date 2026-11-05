@@ -43,9 +43,7 @@ function AuditLegend({ measure }: { measure: AuditMeasure }) {
     : month ? measure === "audit_cost" ? z.monthly[month]?.cost_thb : z.monthly[month]?.surplus_kwh
       : measure === "audit_cost" ? z.annual_cost_thb : z.annual_surplus_kwh).filter((v): v is number => v !== null);
   const max = Math.max(...values, 1);
-  const unit = measure === "audit_load" ? month ? `kW · ${monthLabel(month)}` : "kW · clean-year average"
-    : measure === "audit_cost" ? month ? `THB · ${monthLabel(month)}` : "THB · Jul 2018–Jun 2019"
-      : month ? `kWh · ${monthLabel(month)}` : "kWh · Jul 2018–Jun 2019";
+  const unit = measure === "audit_load" ? "kW" : measure === "audit_cost" ? "THB" : "kWh";
   const endFmt = String(endHour).padStart(2, "0");
   return (
     <div className="legend">
@@ -59,12 +57,8 @@ function AuditLegend({ measure }: { measure: AuditMeasure }) {
           <span><i className="k-nodata" />No circuit data</span>
           <span>
             {mode === "whatif"
-              ? `Simulated post-curfew (${startHour}:00–${endFmt}:00)`
-              : month
-                ? `Recorded values for ${monthLabel(month)}`
-                : measure === "audit_load"
-                  ? "Mean after-hours circuit load"
-                  : "Annual preventable opportunity"}
+              ? `After curfew ${startHour}:00–${endFmt}:00`
+              : month ? monthLabel(month) : "Jul 2018–Jun 2019"}
           </span>
         </div>
       </>}
@@ -95,28 +89,28 @@ function Player() {
   return (
     <div className="player">
       <div className="player-row">
-        <button className="play" aria-label={r.playing ? "Pause" : "Play"}
+        <button type="button" className="play" aria-label={r.playing ? "Pause" : "Play"}
           onClick={() => setReplay({ playing: !r.playing, t: r.t >= steps - 1 ? 0 : r.t })}>
           {r.playing
-            ? <svg viewBox="0 0 16 16" width="14"><rect x="3" y="2" width="3.5" height="12" fill="currentColor" /><rect x="9.5" y="2" width="3.5" height="12" fill="currentColor" /></svg>
-            : <svg viewBox="0 0 16 16" width="14"><path d="M4 2 L14 8 L4 14 Z" fill="currentColor" /></svg>}
+            ? <svg viewBox="0 0 16 16" width="14" aria-hidden><rect x="3" y="2" width="3.5" height="12" fill="currentColor" /><rect x="9.5" y="2" width="3.5" height="12" fill="currentColor" /></svg>
+            : <svg viewBox="0 0 16 16" width="14" aria-hidden><path d="M4 2 L14 8 L4 14 Z" fill="currentColor" /></svg>}
         </button>
         <div className="clock">{replay?.times[r.t] ?? "--:--"}</div>
-        <input type="range" min={0} max={Math.max(steps - 1, 0)} value={r.t} aria-label="Time of day"
+        <input type="range" min={0} max={Math.max(steps - 1, 0)} value={r.t} aria-label="Time of day" aria-valuetext={replay?.times[r.t]}
           onChange={(e) => setReplay({ t: +e.target.value, playing: false })} />
         <select value={r.speed} aria-label="Speed" onChange={(e) => setReplay({ speed: +e.target.value })}>
           {[2, 4, 8].map((s) => <option key={s} value={s}>{s}× </option>)}
         </select>
       </div>
       <div className="player-row small">
-        <button className="ghost" disabled={i <= 0} onClick={() => setReplay({ date: days[i - 1] })} aria-label="Previous day">‹</button>
+        <button type="button" className="ghost" disabled={i <= 0} onClick={() => setReplay({ date: days[i - 1] })} aria-label="Previous day">‹</button>
         <select value={r.date ?? ""} onChange={(e) => setReplay({ date: e.target.value })} aria-label="Day">
           {days.map((d) => <option key={d} value={d}>{dateLabel(d)}</option>)}
         </select>
-        <button className="ghost" disabled={i < 0 || i >= days.length - 1} onClick={() => setReplay({ date: days[i + 1] })} aria-label="Next day">›</button>
-        <div className="segmented tiny">
-          <button className={!r.after ? "on" : ""} onClick={() => setReplay({ after: false })}>As Recorded</button>
-          <button className={r.after ? "on" : ""} onClick={() => setReplay({ after: true })}>With Setpoint Change</button>
+        <button type="button" className="ghost" disabled={i < 0 || i >= days.length - 1} onClick={() => setReplay({ date: days[i + 1] })} aria-label="Next day">›</button>
+        <div className="segmented tiny" role="group" aria-label="Scenario">
+          <button type="button" className={!r.after ? "on" : ""} aria-pressed={!r.after} onClick={() => setReplay({ after: false })}>As Recorded</button>
+          <button type="button" className={r.after ? "on" : ""} aria-pressed={r.after} onClick={() => setReplay({ after: true })}>With Setpoint Change</button>
         </div>
       </div>
     </div>
@@ -133,7 +127,7 @@ function FloorPicker() {
     <nav className="floor-picker" aria-label="Floors">
       <span>Floor</span>
       {floors.map((f) => (
-        <button key={f} className={scope.floor === f ? "on" : ""} aria-current={scope.floor === f}
+        <button key={f} type="button" className={scope.floor === f ? "on" : ""} aria-current={scope.floor === f ? "location" : undefined} aria-label={`Floor ${f}`}
           onClick={() => select({ floor: f })}>{f}</button>
       ))}
     </nav>
@@ -176,19 +170,17 @@ export default function Stage() {
       {(view === "plan" || scope.floor !== undefined) && <FloorPicker />}
       <div className="stage-tr">
         {mode === "replay" && <Legend measure={active as Measure} />}
-        <div className="segmented">
-          <button className={view === "3d" ? "on" : ""} onClick={() => setView("3d")}>3D</button>
-          <button className={view === "plan" ? "on" : ""} onClick={() => setView("plan")}>Plan</button>
+        <div className="segmented" role="group" aria-label="Building view">
+          <button type="button" className={view === "3d" ? "on" : ""} aria-pressed={view === "3d"} onClick={() => setView("3d")}>3D</button>
+          <button type="button" className={view === "plan" ? "on" : ""} aria-pressed={view === "plan"} onClick={() => setView("plan")}>Plan</button>
         </div>
       </div>
-      {error && <div className="stage-error">Can’t reach the data service ({error}). Start it with <code>python -m webapp.api</code>, then reload.</div>}
-      <div className="stage-bottom">
+      {error && <div className="stage-error" role="alert">Can’t reach the data service ({error}). Start it with <code>python -m webapp.api</code>, then reload.</div>}
+      <div className={`stage-bottom ${topic === "afterhours" ? "has-fab" : ""}`}>
         {mode === "replay" && <Player />}
         <p className="caption">
-          {scope.floor === undefined ? "Click a floor to lift it out of the stack. " : "Click a zone for its detail. Esc goes back up. "}
-          Zone plans traced from the CU-BEMS paper (Pipattanasomporn et al., 2020, Fig. 2); facade is schematic.{" "}
-          {topic === "afterhours" ? "After-hours load sums each zone’s lighting and plug circuits outside office hours (Jul 2018–Jun 2019)."
-            : "Comfort and AC layers use historical CU-BEMS data (2018–19)."}
+          {scope.floor === undefined ? "Click a floor to open it. " : "Click a zone for detail. Esc goes back. "}
+          Zone plans from CU-BEMS (Pipattanasomporn et al., 2020).
         </p>
       </div>
     </>

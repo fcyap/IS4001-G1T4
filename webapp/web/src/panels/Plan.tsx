@@ -73,8 +73,7 @@ export default function Plan({ zones }: { zones: ZoneInfo[] }) {
           <span>{rule ? <>{raised} of {setpoint.length} zones · {kwh(acKwh)} · {thb(acKwh * OFFICE_AC_THB_PER_KWH)}</> : "Calculating…"}</span>
         </div>
       </div>
-      {rule && <p className="note">Setpoints rise only where more than a quarter of office time is too cool, at most +3 °C.
-        {breaches ? ` ${breaches} zone${breaches > 1 ? "s" : ""} would break the comfort guardrail in some month.` : " No zone breaks the comfort guardrail."}</p>}
+      {rule && <p className="note">{breaches ? `${breaches} zone${breaches > 1 ? "s" : ""} break the comfort guardrail in some month.` : "No zone breaks the comfort guardrail."}</p>}
 
       <h3 className="glance-h">Where to act first</h3>
       <ol className="plan-zones">
@@ -95,17 +94,16 @@ export default function Plan({ zones }: { zones: ZoneInfo[] }) {
           );
         })}
       </ol>
-      {switchOff.length > SHOWN && <button className="link" onClick={() => setShowAll(!showAll)}>
+      {switchOff.length > SHOWN && <button type="button" className="link" onClick={() => setShowAll(!showAll)}>
         {showAll ? "Show the top zones only" : `Show all ${switchOff.length} zones`}</button>}
 
-      <div className="plan-status">
-        {changedZones || changedSetpoint
-          ? <><span>You’ve changed {[changedZones && `${changedZones} zone${changedZones > 1 ? "s" : ""}`, changedSetpoint && "the setpoints"].filter(Boolean).join(" and ")} from the plan.</span>
-            <button type="button" className="link" onClick={reset}>Reset to the plan</button></>
-          : <span>{topic === "afterhours" ? "The schedule slider above updates the after-hours savings in this plan." : "The simulation below is running this plan. Adjust it there, or click a zone to change just that zone."}</span>}
-      </div>
-      <p className="note">The plan is rule-based: cut rates follow each zone’s type of space and circuit classification, while after-hours savings use the switch-off time selected above. The setpoint rule is the one from the Cooling Comfort analysis.
-        AC savings are costed at the office-hour tariff, about ฿{OFFICE_AC_THB_PER_KWH.toFixed(2)}/kWh.</p>
+      {(changedZones || changedSetpoint) ? (
+        <div className="plan-status">
+          <span>You’ve changed {[changedZones && `${changedZones} zone${changedZones > 1 ? "s" : ""}`, changedSetpoint && "the setpoints"].filter(Boolean).join(" and ")}.</span>
+          <button type="button" className="link" onClick={reset}>Reset to the plan</button>
+        </div>
+      ) : null}
+      <p className="note">Cut rates follow each zone’s space type and circuit class. AC savings use the office-hour tariff, about ฿{OFFICE_AC_THB_PER_KWH.toFixed(2)}/kWh.</p>
     </Section>
   );
 }

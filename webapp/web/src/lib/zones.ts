@@ -23,11 +23,11 @@ const KIND_LABEL: Record<ZoneKind, string> = {
 
 /** Where the energy lever is for this kind of space, for the facilities manager. */
 const KIND_LEVER: Record<ZoneKind, string> = {
-  office: "Office space used during working hours, so after-hours switch-off of lights and plugs and a setpoint raise are the main levers.",
-  circulation: "Stair and circulation hall without metered AC. Lighting is the main load: occupancy or daylight controls can cut it, but egress lighting must stay on.",
-  lobby: "Ground-floor sitting hall at the main entrance. Lighting-led, so tie lighting to opening hours and daylight.",
-  plant: "Electrical plant room. Much of its load is equipment that must keep running, so check with engineering before switching anything off.",
-  exterior: "Lighting around the outside of the building only. A timer or photocell schedule is the lever.",
+  office: "Switch off lights and plugs after hours, and raise the setpoint.",
+  circulation: "Lighting only, no AC. Use occupancy or daylight controls; keep egress lighting on.",
+  lobby: "Mostly lighting. Tie it to opening hours and daylight.",
+  plant: "Equipment must keep running. Check with engineering before switching off.",
+  exterior: "Exterior lighting. Put it on a timer or photocell.",
 };
 
 function kindOf(floor: number, zone: string): ZoneKind {

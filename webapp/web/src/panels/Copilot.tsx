@@ -34,6 +34,8 @@ export default function Copilot() {
   const [keyDraft, setKeyDraft] = useState(() => getStoredGeminiKey());
   const [storedKey, setStoredKey] = useState(() => getStoredGeminiKey());
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fabRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const { meta } = useData();
   const scope = useStore((s) => s.scope);
@@ -85,8 +87,11 @@ export default function Copilot() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, typing, open]);
+
+  useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
+  const close = () => { setOpen(false); fabRef.current?.focus(); };
 
   const handleSaveKey = (e: React.FormEvent) => {
     e.preventDefault();
@@ -150,7 +155,7 @@ export default function Copilot() {
       const botMsg: ChatMessage = {
         id: `b-${Date.now()}`,
         sender: "bot",
-        text: `### 🤖 Telemetry Summary (${activeScopeName})\n\nEnforcing the **${startHour}:00 → ${endFmt}:00** curfew across **${activeScopeName}** (${activePeriodName}) recovers **${currentSavingsKwh}** and saves **${currentSavingsCost}** (excl. VAT).`,
+        text: `### Telemetry summary (${activeScopeName})\n\nEnforcing the **${startHour}:00 → ${endFmt}:00** curfew across **${activeScopeName}** (${activePeriodName}) recovers **${currentSavingsKwh}** and saves **${currentSavingsCost}** (excl. VAT).`,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
       setMessages((prev) => [...prev, botMsg]);
@@ -160,48 +165,53 @@ export default function Copilot() {
   };
 
   const PROMPT_CHIPS = [
-    "🎛️ What did my manual adjustments change?",
-    "⚡ Why is Floor 1 Zone 1 the biggest hotspot?",
-    "🔒 Which 4 circuits are locked ON 24/7?",
-    "💡 Summarize the active curfew savings",
+    "What did my manual adjustments change?",
+    "Why is Floor 1 Zone 1 the biggest hotspot?",
+    "Which circuits stay on 24/7?",
+    "Summarise the active curfew savings",
   ];
 
   return (
     <>
       <button
+        ref={fabRef}
         type="button"
         className={`copilot-fab ${open ? "active" : ""}`}
         onClick={() => setOpen(!open)}
-        aria-label="Open Chamchuri 5 AI Copilot"
+        aria-expanded={open}
+        aria-controls="copilot-panel"
+        aria-label="Ask the copilot about this data"
       >
-        <span className="copilot-fab-sparkle">✨</span>
-        <span className="copilot-fab-label">AI Copilot</span>
-        {!open && <span className="copilot-fab-dot" />}
+        <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden>
+          <path d="M4 4.5h12a1.5 1.5 0 0 1 1.5 1.5v6.5A1.5 1.5 0 0 1 16 14H9l-4 3v-3H4a1.5 1.5 0 0 1-1.5-1.5V6A1.5 1.5 0 0 1 4 4.5Z"
+            fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        </svg>
+        <span className="copilot-fab-label">Copilot</span>
       </button>
 
       {open && (
-        <div className="copilot-modal">
+        <div id="copilot-panel" className="copilot-modal" role="dialog" aria-labelledby="copilot-title"
+          onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } }}>
           <div className="copilot-header">
             <div className="copilot-header-info">
-              <span className="copilot-avatar">✨</span>
-              <div>
-                <strong>Chamchuri 5 AI Copilot</strong>
-                <small>
-                  {hasGemini ? "Gemini 2.5 Flash · Live Dashboard & Telemetry" : "Telemetry Diagnostics · Click 🔑 for Gemini AI"}
-                </small>
-              </div>
+              <strong id="copilot-title">Copilot</strong>
+              <small>
+                {hasGemini ? "Gemini 2.5 Flash" : "Offline summaries. Add a Gemini key for full answers."}
+              </small>
             </div>
             <div className="copilot-header-actions">
               <button
                 type="button"
                 className={`copilot-key-toggle ${hasGemini ? "active" : ""}`}
                 onClick={() => setShowKeyBar((v) => !v)}
-                title={hasGemini ? "Gemini API key active" : "Set Gemini API key"}
+                aria-expanded={showKeyBar}
               >
-                🔑
+                {hasGemini ? "Key set" : "Add key"}
               </button>
-              <button type="button" className="copilot-close" onClick={() => setOpen(false)} aria-label="Close chat">
-                ✕
+              <button type="button" className="copilot-close" onClick={close} aria-label="Close copilot">
+                <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden>
+                  <path d="M2.5 2.5l7 7m0-7-7 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
               </button>
             </div>
           </div>
@@ -210,6 +220,8 @@ export default function Copilot() {
             <form className="copilot-key-bar" onSubmit={handleSaveKey}>
               <input
                 type="password"
+                aria-label="Gemini API key"
+                autoComplete="off"
                 placeholder={meta?.ai_configured ? "Server .env key active (optional override)…" : "Paste Gemini API Key (AIzaSy…)"}
                 value={keyDraft}
                 onChange={(e) => setKeyDraft(e.target.value)}
@@ -218,26 +230,17 @@ export default function Copilot() {
             </form>
           )}
 
-          <div className="copilot-body">
+          <div className="copilot-body" role="log" aria-live="polite" aria-busy={typing}>
             {/* Always-live welcome & context card */}
             <div className="copilot-msg bot">
               <div className="copilot-msg-bubble">
-                <p>
-                  Ask me anything about the after-hours energy audit across all 7 floors and 65 circuits in{" "}
-                  <strong>Chamchuri 5</strong>, or about any manual adjustments you make on the dashboard.
-                </p>
-                <p>
-                  <strong>Active Dashboard State:</strong>
-                  <br />• Scope: <strong>{activeScopeName}</strong> ({activePeriodName})
-                  <br />• Building Default: <strong>{startHour}:00 → {endFmt}:00</strong>
-                  {manualOverrideCount > 0 && (
-                    <>
-                      <br />• Manual Overrides (Floor/Zone/Circuit): <strong>{manualOverrideCount} active</strong>
-                    </>
-                  )}
-                  <br />• Simulated Savings: <strong>{currentSavingsKwh}</strong> (<strong>{currentSavingsCost}</strong> excl. VAT)
-                </p>
-                <span className="copilot-msg-time">Live Context</span>
+                <p>Ask about the after-hours audit or your changes.</p>
+                <dl className="copilot-context">
+                  <dt>Scope</dt><dd>{activeScopeName}, {activePeriodName}</dd>
+                  <dt>Default curfew</dt><dd>{startHour}:00–{endFmt}:00</dd>
+                  {manualOverrideCount > 0 && <><dt>Overrides</dt><dd>{manualOverrideCount} floor, zone or circuit settings</dd></>}
+                  <dt>Simulated savings</dt><dd>{currentSavingsKwh}, {currentSavingsCost} excl. VAT</dd>
+                </dl>
               </div>
             </div>
 
@@ -262,10 +265,10 @@ export default function Copilot() {
 
             {typing && (
               <div className="copilot-msg bot">
-                <div className="copilot-msg-bubble typing">
-                  <span className="dot" />
-                  <span className="dot" />
-                  <span className="dot" />
+                <div className="copilot-msg-bubble typing" aria-label="Copilot is typing">
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
                 </div>
               </div>
             )}
@@ -294,8 +297,10 @@ export default function Copilot() {
             }}
           >
             <input
+              ref={inputRef}
               type="text"
-              placeholder="Ask about any floor, circuit, or manual schedule change…"
+              aria-label="Question for the copilot"
+              placeholder="Ask about a floor, circuit or schedule change…"
               value={input}
               onChange={(e) => setInput(e.target.value)}
             />

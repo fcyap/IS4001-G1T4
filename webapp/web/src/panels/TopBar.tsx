@@ -40,7 +40,7 @@ export default function TopBar() {
 
   return (
     <header className="topbar">
-      <button type="button" className="brand" onClick={() => navigate("home")} title="Back to the start page">
+      <button type="button" className="brand" onClick={() => navigate("home")} aria-label="Chamchuri 5, back to the start page" title="Back to the start page">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden>
           {[0, 1, 2, 3, 4, 5, 6].map((i) => (
             <rect key={i} x={3 + (i % 2)} y={20 - i * 2.7} width="17" height="1.7" rx="0.4"
@@ -52,25 +52,25 @@ export default function TopBar() {
         </div>
       </button>
 
-      <div className="segmented topics" role="tablist" aria-label="Use case">
+      <div className="segmented topics" role="group" aria-label="Question">
         {TOPICS.map((t) => (
-          <button key={t.id} role="tab" aria-selected={topic === t.id} title={t.hint}
+          <button key={t.id} type="button" aria-pressed={topic === t.id} title={t.hint}
             className={topic === t.id ? "on" : ""} onClick={() => navigate(t.id)}>{t.label}</button>
         ))}
       </div>
 
       <nav className="crumbs" aria-label="Selection">
-        <button className={!scope.floor ? "on" : ""} onClick={() => select({})}>Whole Building</button>
+        <button type="button" className={!scope.floor ? "on" : ""} aria-current={!scope.floor ? "location" : undefined} onClick={() => select({})}>Whole Building</button>
         {scope.floor !== undefined && (
           <>
             <span aria-hidden>/</span>
-            <button className={!scope.zone ? "on" : ""} onClick={() => select({ floor: scope.floor })}>Floor {scope.floor}</button>
+            <button type="button" className={!scope.zone ? "on" : ""} aria-current={!scope.zone ? "location" : undefined} onClick={() => select({ floor: scope.floor })}>Floor {scope.floor}</button>
           </>
         )}
         {scope.zone && (
           <>
             <span aria-hidden>/</span>
-            <button className="on">{zoneName(scope.zone)}</button>
+            <span className="crumb-here" aria-current="location">{zoneName(scope.zone)}</span>
           </>
         )}
       </nav>
@@ -85,14 +85,14 @@ export default function TopBar() {
             </select>
           </label>
         )}
-        {topic !== "home" && <div className="segmented" role="tablist" aria-label="View">
+        {topic !== "home" && <div className="segmented" role="group" aria-label="View">
           {MODES_BY_TOPIC[topic].map((id) => {
             const m = MODE_LABELS[topic][id]!;
-            return <button key={id} role="tab" aria-selected={mode === id} title={m.hint}
+            return <button key={id} type="button" aria-pressed={mode === id} title={m.hint}
               className={mode === id ? "on" : ""} onClick={() => setMode(id)}>{m.label}</button>;
           })}
         </div>}
-        <span className={`sync ${loading ? "busy" : ""}`} title={loading ? "Updating" : "Up to date"} />
+        <span className={`sync ${loading ? "busy" : ""}`} role="status" aria-label={loading ? "Updating data" : "Data up to date"} title={loading ? "Updating" : "Up to date"} />
       </div>
     </header>
   );

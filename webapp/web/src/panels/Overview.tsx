@@ -30,7 +30,7 @@ function useRows(groups: Group[]): Row[] {
   });
 }
 
-function RankedList({ rows, byWaste, total, hint }: { rows: Row[]; byWaste: boolean; total: number; hint: string }) {
+function RankedList({ rows, byWaste, total }: { rows: Row[]; byWaste: boolean; total: number }) {
   const sorted = [...rows].sort((a, b) => byWaste ? b.kwh - a.kwh
     : (b.hasComfort ? b.tooCool : -1) - (a.hasComfort ? a.tooCool : -1));
   const max = Math.max(...sorted.map((r) => byWaste ? r.kwh : r.hasComfort ? r.tooCool : 0), 1e-9);
@@ -53,7 +53,6 @@ function RankedList({ rows, byWaste, total, hint }: { rows: Row[]; byWaste: bool
         );
       })}
     </ol>
-    <p className="note">{hint}</p>
   </>;
 }
 
@@ -88,21 +87,20 @@ export default function Overview({ zones }: { zones: ZoneInfo[] }) {
       aside={<span className="aside">{period}</span>} className="glance">
       <div className="stats">
         <Stat label="After-hours Waste" value={kwh(all.kwh)} unit={thb(all.thb)}
-          hint="Preventable after-hours energy above circuit baselines, cost excluding VAT (Question A)" />
+          hint="Above circuit baselines, excl. VAT" />
         <Stat label="Office Time Too Cool" value={all.hasComfort ? n0(all.tooCool) : "–"} unit="%"
-          hint="Share of office hours with PMV below −0.5, zones with sensors (Question B)" />
+          hint="PMV below −0.5, sensor zones only" />
       </div>
       {top && top.kwh > 0 && topUse && (
         <p className="glance-lead">
-          The biggest single opportunity in {where} is <b>{top.label}</b> ({topUse.name.toLowerCase()}):
-          {" "}{kwh(top.kwh)} of after-hours waste, {pct(top.kwh, all.kwh)} of the total.{" "}
-          <button className="link" onClick={() => select({ floor: top.zones[0].floor, zone: top.zones[0].zone })}>Open it</button>
+          Biggest opportunity in {where}: <b>{top.label}</b> ({topUse.name.toLowerCase()}),
+          {" "}{kwh(top.kwh)}, {pct(top.kwh, all.kwh)} of the total.{" "}
+          <button type="button" className="link" onClick={() => select({ floor: top.zones[0].floor, zone: top.zones[0].zone })}>Open</button>
         </p>
       )}
 
-      <h3 className="glance-h">{scope.floor === undefined ? "Floors" : "Zones"}, ranked by {byWaste ? "after-hours waste" : "time too cool"}</h3>
-      <RankedList rows={childRows} byWaste={byWaste} total={all.kwh}
-        hint={scope.floor === undefined ? "Click a floor to see its zones." : "Click a zone to see its circuits and comfort detail."} />
+      <h3 className="glance-h">{scope.floor === undefined ? "Floors" : "Zones"} by {byWaste ? "after-hours waste" : "time too cool"}</h3>
+      <RankedList rows={childRows} byWaste={byWaste} total={all.kwh} />
     </Section>
   );
 }

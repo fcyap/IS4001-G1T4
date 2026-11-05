@@ -72,15 +72,15 @@ export default function QuestionAPlan(_props: { zones: ZoneInfo[] }) {
       defaultOpen={true}
     >
       <div className="plan-total">
-        <span className="stat-label">Active schedule saves</span>
+        <span className="stat-label">Schedule saves</span>
         <span className="big">{thb(totalThb)}</span>
         <span className="sub">
-          {kwh(totalKwh)} {period} · <b>{curfewCount}</b> on curfew, <b>{criticalCount}</b> critical standby locked ON 24/7
+          {kwh(totalKwh)} {period} · <b>{curfewCount}</b> on curfew, <b>{criticalCount}</b> critical standby always on
         </span>
       </div>
 
-      <p className="note" style={{ marginTop: 6, marginBottom: 10 }}>
-        Precedence: <b>Circuit Override &gt; Zone Override &gt; Floor Override &gt; Whole Building</b>. Critical Standby circuits stay locked <b>ON 24/7</b>.
+      <p className="note plan-precedence">
+        The most specific setting wins: circuit, then zone, floor, building.
       </p>
 
       <ol className="plan-zones">
@@ -90,37 +90,40 @@ export default function QuestionAPlan(_props: { zones: ZoneInfo[] }) {
             <li key={c.circuit_id} className="plan-circuit-row">
               <div className="plan-zone plan-circuit-item">
                 {c.isCritical ? (
-                  <span className="plan-rate badge-keep" title="Critical Standby circuit — locked ON 24/7">
-                    🔒 ON 24/7
+                  <span className="plan-rate badge-keep" title="Critical standby circuit, always on">
+                    Always on
                   </span>
                 ) : (
                   <div className="circuit-inline-controls">
                     <button
                       type="button"
+                      role="switch"
+                      aria-checked={!c.isExempt}
+                      aria-label={`After-hours curfew for ${c.cleanName}`}
                       className={`plan-rate ${c.isExempt ? "badge-keep" : c.hasCustomWindow ? "badge-amber" : "badge-curfew"}`}
                       onClick={() => toggleCircuitExemption(c.circuit_id)}
-                      title={c.isExempt ? "Click to re-enable after-hours curfew" : "Click to keep ON 24/7 (exempt from curfew)"}
+                      title={c.isExempt ? "Put this circuit back on the after-hours curfew" : "Exempt this circuit so it stays on 24/7"}
                     >
-                      {c.isExempt ? "ON 24/7" : "Curfew Off"}
+                      {c.isExempt ? "Exempt" : "On curfew"}
                     </button>
                     {!c.isExempt && (
-                      <div className="circuit-window-selects" aria-label={`Curfew hours for ${c.cleanName}`}>
+                      <div className="circuit-window-selects" role="group" aria-label={`Curfew hours for ${c.cleanName}`}>
                         <select
                           className="mini"
                           value={c.effectiveStartHour}
                           onChange={(e) => setCircuitWindow(c.circuit_id, +e.target.value, c.effectiveEndHour)}
-                          title="Curfew start hour"
+                          aria-label="Curfew start hour"
                         >
                           {START_HOURS.map((h) => (
                             <option key={h} value={h}>{h}:00</option>
                           ))}
                         </select>
-                        <span>–</span>
+                        <span aria-hidden>–</span>
                         <select
                           className="mini"
                           value={c.effectiveEndHour}
                           onChange={(e) => setCircuitWindow(c.circuit_id, c.effectiveStartHour, +e.target.value)}
-                          title="Curfew end hour"
+                          aria-label="Curfew end hour"
                         >
                           {END_HOURS.map((h) => (
                             <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>
@@ -131,44 +134,30 @@ export default function QuestionAPlan(_props: { zones: ZoneInfo[] }) {
                   </div>
                 )}
 
-                <span
-                  className="plan-zone-name"
-                  style={{ cursor: "pointer" }}
-                  onClick={() => select({ floor: c.floor, zone: c.zone })}
-                  title={`Inspect Floor ${c.floor}, Zone ${c.zone.slice(1)}`}
-                >
-                  <b>
+                <span className="plan-zone-name">
+                  <button
+                    type="button"
+                    className="plan-zone-link"
+                    onClick={() => select({ floor: c.floor, zone: c.zone })}
+                    title={`Open Floor ${c.floor}, Zone ${c.zone.slice(1)}`}
+                  >
                     F{c.floor} Z{c.zone.slice(1)} · {c.cleanName.replace(/^Floor\d+_/, "")} <small>({c.spaceName})</small>
-                  </b>
+                  </button>
                   <small>
                     {c.dataReason}
                     {isCircuitModified && (
                       <>
                         {" · "}
-                        <span
-                          className="link"
-                          role="button"
-                          tabIndex={0}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            clearCircuitWindow(c.circuit_id);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.stopPropagation();
-                              clearCircuitWindow(c.circuit_id);
-                            }
-                          }}
-                        >
+                        <button type="button" className="link" onClick={() => clearCircuitWindow(c.circuit_id)}>
                           Reset circuit
-                        </span>
+                        </button>
                       </>
                     )}
                   </small>
                 </span>
 
                 <span className="plan-zone-val">
-                  {c.isCritical || c.isExempt ? "ON 24/7" : thb(c.savedThb)}
+                  {c.isCritical || c.isExempt ? "Always on" : thb(c.savedThb)}
                 </span>
               </div>
             </li>
@@ -178,7 +167,7 @@ export default function QuestionAPlan(_props: { zones: ZoneInfo[] }) {
 
       {circuitItems.length > SHOWN && (
         <button type="button" className="link" onClick={() => setShowAll(!showAll)}>
-          {showAll ? `Show top ${SHOWN} circuits` : `Show all ${circuitItems.length} circuits (including ON 24/7)`}
+          {showAll ? `Show top ${SHOWN} circuits` : `Show all ${circuitItems.length} circuits`}
         </button>
       )}
     </Section>

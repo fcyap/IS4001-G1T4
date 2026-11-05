@@ -2,20 +2,17 @@ import { useData } from "../lib/data";
 import { kwh, n0 } from "../lib/format";
 import { useStore, type Topic } from "../lib/store";
 
-function UseCase({ topic, eyebrow, title, value, unit, line, detail, action }: {
-  topic: Topic; eyebrow: string; title: string; value: string; unit: string; line: string; detail: string; action: string;
+function UseCase({ topic, label, value, line, detail, action }: {
+  topic: Topic; label: string; value: string; line: string; detail: string; action: string;
 }) {
   const navigate = useStore((s) => s.navigate);
   const open = () => navigate(topic, "overview");                 // every question starts on Today
   return (
     <button type="button" className={`usecase usecase-${topic}`} onClick={open}>
-      <span className="usecase-eyebrow">{eyebrow}</span>
-      <span className="usecase-title">{title}</span>
-      <span className="usecase-value"><b>{value}</b> {unit}</span>
-      <span className="usecase-line">{line}</span>
-      <span className="usecase-detail">{detail}</span>
-      <span className="usecase-action">Recommended: {action}</span>
-      <span className="usecase-go" aria-hidden>Explore →</span>
+      <span className="usecase-label">{label}<span className="usecase-go" aria-hidden>→</span></span>
+      <span className="usecase-line"><b>{value}</b> {line}</span>
+      {detail && <span className="usecase-detail">{detail}</span>}
+      <span className="usecase-action">{action}</span>
     </button>
   );
 }
@@ -36,18 +33,21 @@ export default function Landing() {
 
   return (
     <div className="landing">
-      <h1>Chamchuri 5</h1>
+      <header>
+        <h1>Chamchuri 5</h1>
+        <p className="landing-sub">Chulalongkorn University{meta ? ` · ${audits.length} zones` : ""}</p>
+      </header>
       <div className="usecases">
-        <UseCase topic="afterhours" eyebrow="After-hours waste" title="Switch off what runs after hours"
-          value={meta ? `${wasteful} of ${audits.length}` : "…"} unit="zones"
-          line="carry preventable load outside office hours"
-          detail={meta ? `${kwh(wasteKwh)} · ${n0(wasteThb)} THB a year (Jul 2018–Jun 2019)` : ""}
-          action="BEMS curfew on preventable circuits" />
-        <UseCase topic="comfort" eyebrow="Cooling comfort" title="Stop overcooling, save AC"
-          value={tooCool === null ? "…" : `${n0(tooCool)} %`} unit="of office time"
-          line="is too cool (PMV below −0.5)"
-          detail={acSaved === null ? "" : `The setpoint rule saves about ${n0(acSaved)} % of AC energy`}
-          action="raise setpoints in overcooled zones" />
+        <UseCase topic="afterhours" label="After hours"
+          value={meta ? `${wasteful} of ${audits.length}` : "…"}
+          line="zones still draw load they don't need outside office hours."
+          detail={meta ? `${kwh(wasteKwh)} and ${n0(wasteThb)} THB over Jul 2018–Jun 2019.` : ""}
+          action="Next step: put those circuits on a BEMS curfew." />
+        <UseCase topic="comfort" label="Cooling"
+          value={tooCool === null ? "…" : `${n0(tooCool)} %`}
+          line="of office hours are colder than comfortable (PMV below −0.5)."
+          detail={acSaved === null ? "" : `Raising setpoints in those zones saves about ${n0(acSaved)} % of AC energy.`}
+          action="Next step: nudge setpoints up where it's too cold." />
       </div>
     </div>
   );

@@ -119,42 +119,42 @@ export function recommend(a: EnergyAuditZone): ZoneRec {
   if (a.preventable_count === 0) {
     return {
       rate: 0,
-      action: "Leave on 24/7: every circuit here is critical standby",
+      action: "All critical standby, leave on",
     };
   }
   if (kind === "plant") {
     return {
       rate: 0,
-      action: "Leave on 24/7: plant equipment must keep running",
+      action: "Plant equipment, leave on",
     };
   }
   if (a.classification === "Mixed") {
     return {
       rate: 50,
-      action: "Switch off preventable circuits at curfew; leave critical standby on 24/7",
+      action: "Switch off preventable circuits, leave critical standby on",
     };
   }
   if (kind === "circulation") {
     return {
       rate: 50,
-      action: "Switch off non-essential lighting after hours; keep safety baseload on",
+      action: "Switch off non-essential lighting, keep safety lighting on",
     };
   }
   if (kind === "exterior") {
     return {
       rate: 50,
-      action: "Leave security baseload on after hours",
+      action: "Keep security lighting on",
     };
   }
   if (kind === "lobby") {
     return {
       rate: 75,
-      action: "Switch off sitting hall circuits from 17:00 to 08:00",
+      action: "Switch off sitting hall circuits",
     };
   }
   return {
     rate: 90,
-    action: "Switch off from 17:00 to 08:00 outside office hours",
+    action: "Switch off lights and plugs",
   };
 }
 
@@ -236,10 +236,10 @@ export function getCircuitPlanInfo(
       hasCustomWindow: false,
       effectiveStartHour: buildingStartHour,
       effectiveEndHour: buildingEndHour,
-      badge: "🔒 ON 24/7",
+      badge: "Always on",
       badgeStyle: "badge-keep",
       category: "keep_on",
-      action: "Locked ON 24/7",
+      action: "Always on (critical standby)",
       dataReason: `Critical Standby · Baseload ${baseloadKw.toFixed(2)} kW, Unoccupied ${unoccMeanKw.toFixed(2)} kW (Ratio ${ratio.toFixed(2)}, CV ${cv.toFixed(2)})`,
       baseloadKw,
       unoccMeanKw,
@@ -270,10 +270,10 @@ export function getCircuitPlanInfo(
       hasCustomWindow: false,
       effectiveStartHour: effStart,
       effectiveEndHour: effEnd,
-      badge: "ON 24/7 (Exempt)",
+      badge: "Exempt",
       badgeStyle: "badge-keep",
       category: "keep_on",
-      action: "Kept ON 24/7 (Manual Override)",
+      action: "Exempt, stays on (manual)",
       dataReason: `Preventable Waste · Manually exempted from curfew (Baseload ${baseloadKw.toFixed(2)} kW, Unoccupied ${unoccMeanKw.toFixed(2)} kW)`,
       baseloadKw,
       unoccMeanKw,

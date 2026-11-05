@@ -8,7 +8,7 @@ import {
   resolveFloorWindow,
   resolveZoneWindow,
 } from "../lib/plan";
-import { monthLabel, useStore, zoneName, type AuditMeasure, type MapMeasure, type Scope } from "../lib/store";
+import { monthLabel, useStore, type AuditMeasure, type MapMeasure, type Scope } from "../lib/store";
 import { zoneUse } from "../lib/zones";
 import { AfterHoursLoadChart, CircuitEnergyHeatmap, FloorEnergyChart, PreventableEnergyChart } from "./Charts";
 import { Section, Stat } from "./PanelPrimitives";
@@ -39,8 +39,8 @@ function AfterHoursLoadReadouts({ zones }: { zones: ZoneInfo[] }) {
   return (
     <Section title="After-hours Load & Waste" aside={<span className="aside">{periodLabel}</span>}>
       <div className="audit-kpi-primary">
-        <Stat label="Preventable energy" value={hasEnergy ? kwh(energy) : "Unavailable"} unit={month ? monthLabel(month) : "Annual total"} />
-        <Stat label="Mean after-hours load" value={n3(totalLoad)} unit="kW · unoccupied power" />
+        <Stat label="Preventable energy" value={hasEnergy ? kwh(energy) : "Unavailable"} />
+        <Stat label="Mean after-hours load" value={n3(totalLoad)} unit="kW" />
       </div>
       <div className="audit-kpi-secondary">
         <Stat label="Cost opportunity" value={hasCost ? thb(cost) : "Unavailable"} unit="excl. VAT" />
@@ -160,12 +160,6 @@ function AuditSavings() {
     }
   };
 
-  const scopeTitle = scope.zone
-    ? `Floor ${scope.floor} · ${zoneName(scope.zone)}`
-    : scope.floor
-      ? `Floor ${scope.floor}`
-      : "Whole Building";
-
   const estimate = meta
     ? plannedScheduleSavings(
         meta,
@@ -276,7 +270,7 @@ function AuditSavings() {
 
   return (
     <Section
-      title={isWholeBuilding ? "Whole Building Curfew Simulator" : `Curfew Simulator · ${scopeTitle}`}
+      title="Curfew Simulator"
       aside={
         totalOverrideCount > 0 ? (
           <button type="button" className="link" onClick={resetCircuitExemptions}>
@@ -290,18 +284,18 @@ function AuditSavings() {
       defaultOpen={true}
     >
       {/* Scope hierarchy status bar */}
-      <div className="curfew-scope-status" style={{ marginBottom: 8, fontSize: 12, color: "var(--muted)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div className="curfew-scope-status">
         <span>
-          {isWholeBuilding && <>Setting <b>Whole Building</b> default curfew (overridden floors/zones stay locked)</>}
+          {isWholeBuilding && <>Building default. Floors and zones with their own curfew keep it.</>}
           {isFloor && scope.floor !== undefined && (
             floorResolved.isOverridden
-              ? <><b>Floor {scope.floor} Manual Override</b> active (overridden zones on this floor stay locked)</>
-              : <>Following <b>Whole Building</b> ({buildingStart}:00–{String(buildingEnd).padStart(2, "0")}:00) · Move slider to override Floor {scope.floor}</>
+              ? <><b>Floor {scope.floor}</b> has its own curfew</>
+              : <>Follows the building ({buildingStart}:00–{String(buildingEnd).padStart(2, "0")}:00)</>
           )}
           {isZone && scope.floor !== undefined && scope.zone && (
             zoneResolved.isOverridden
-              ? <><b>Zone {scope.zone.slice(1)} Manual Override</b> active (stays locked if Floor {scope.floor} changes)</>
-              : <>Following <b>{zoneResolved.source === "floor" ? `Floor ${scope.floor}` : "Whole Building"}</b> ({zoneResolved.start_hour}:00–{String(zoneResolved.end_hour).padStart(2, "0")}:00) · Move slider to override Zone {scope.zone.slice(1)}</>
+              ? <><b>Zone {scope.zone.slice(1)}</b> has its own curfew</>
+              : <>Follows {zoneResolved.source === "floor" ? `Floor ${scope.floor}` : "the building"} ({zoneResolved.start_hour}:00–{String(zoneResolved.end_hour).padStart(2, "0")}:00)</>
           )}
         </span>
         {isFloor && scope.floor !== undefined && floorResolved.isOverridden && (
@@ -320,7 +314,7 @@ function AuditSavings() {
         <div className="curfew-dual-sliders">
           <label className="slider">
             <div className="slider-label-row">
-              <span>Start Curfew ({isZone ? `Zone ${scope.zone?.slice(1)}` : isFloor ? `Floor ${scope.floor}` : "Building"}):</span>
+              <span>Curfew starts</span>
               <b>{activeStart}:00</b>
             </div>
             <input
@@ -337,7 +331,7 @@ function AuditSavings() {
 
           <label className="slider">
             <div className="slider-label-row">
-              <span>End Curfew ({isZone ? `Zone ${scope.zone?.slice(1)}` : isFloor ? `Floor ${scope.floor}` : "Building"}):</span>
+              <span>Curfew ends</span>
               <b>{endFmt}:00</b>
             </div>
             <input
@@ -369,23 +363,23 @@ function AuditSavings() {
         </div>
       </div>
 
-      <div className="result" style={{ marginTop: 10 }}>
+      <div className="result">
         <div>
-          <span className="stat-label">Simulated Energy Saved</span>
+          <span className="stat-label">Energy Saved</span>
           <span className="big">{energy === undefined ? "Unavailable" : kwh(energy)}</span>
-          <span className="sub">{capturePct}% of preventable waste captured</span>
+          <span className="sub">{capturePct}% of preventable waste</span>
         </div>
         <div>
-          <span className="stat-label">Simulated Cost Saved</span>
+          <span className="stat-label">Cost Saved</span>
           <span className="big">{cost === undefined ? "Unavailable" : thb(cost)}</span>
-          <span className="sub">THB · MEA TOU (excl. VAT)</span>
+          <span className="sub">MEA TOU tariff, excl. VAT</span>
         </div>
       </div>
 
       {/* LEVEL 1 -> LEVEL 2: WHOLE BUILDING -> FLOOR BREAKDOWN */}
       {isWholeBuilding && floorBreakdown.length > 0 && (
-        <div className="whatif-scope-breakdown" style={{ marginTop: 14 }}>
-          <h3 className="glance-h">Floor Curfews (Click a Floor to Adjust)</h3>
+        <div className="whatif-scope-breakdown">
+          <h3 className="glance-h">Floor curfews</h3>
           <ol className="rank">
             {floorBreakdown.map((f) => {
               const fEndFmt = String(f.end).padStart(2, "0");
@@ -394,19 +388,18 @@ function AuditSavings() {
                   <button
                     type="button"
                     className="rank-row"
-                    style={{ width: "100%", background: "none", border: "none", color: "inherit", cursor: "pointer", textAlign: "left", padding: "4px 0" }}
                     onClick={() => select({ floor: f.floor })}
                   >
                     <span className="rank-name">
                       <b>Floor {f.floor}</b>
                       <small>
                         Off {f.start}:00–{fEndFmt}:00
-                        {f.isFloorOverridden ? " · Floor Override" : ""}
-                        {f.zoneOvCount > 0 ? ` · ${f.zoneOvCount} Zone Override${f.zoneOvCount > 1 ? "s" : ""}` : ""}
+                        {f.isFloorOverridden ? " · own curfew" : ""}
+                        {f.zoneOvCount > 0 ? ` · ${f.zoneOvCount} zone override${f.zoneOvCount > 1 ? "s" : ""}` : ""}
                       </small>
                     </span>
                     <span className="rank-bar">
-                      <i style={{ width: `${(f.kwh / maxFloorKwh) * 100}%`, background: f.isFloorOverridden || f.zoneOvCount > 0 ? "var(--amber)" : "var(--warm)" }} />
+                      <i style={{ width: `${(f.kwh / maxFloorKwh) * 100}%`, background: f.isFloorOverridden || f.zoneOvCount > 0 ? "var(--inspect)" : "var(--warm)" }} />
                     </span>
                     <span className="rank-val">
                       <b>{kwh(f.kwh)}</b>
@@ -422,8 +415,8 @@ function AuditSavings() {
 
       {/* LEVEL 2 -> LEVEL 3: FLOOR -> ZONE BREAKDOWN */}
       {isFloor && zoneBreakdown.length > 0 && (
-        <div className="whatif-scope-breakdown" style={{ marginTop: 14 }}>
-          <h3 className="glance-h">Floor {scope.floor} Zones (Click a Zone to Adjust)</h3>
+        <div className="whatif-scope-breakdown">
+          <h3 className="glance-h">Zone curfews on Floor {scope.floor}</h3>
           <ol className="rank">
             {zoneBreakdown.map((z) => {
               const zEndFmt = String(z.end).padStart(2, "0");
@@ -433,22 +426,21 @@ function AuditSavings() {
                   <button
                     type="button"
                     className="rank-row"
-                    style={{ width: "100%", background: "none", border: "none", color: "inherit", cursor: "pointer", textAlign: "left", padding: "4px 0" }}
                     onClick={() => select({ floor: scope.floor, zone: z.zone })}
                   >
                     <span className="rank-name">
                       <b>Zone {z.zone.slice(1)} · <small>{z.name}</small></b>
                       <small>
                         {isAllCritical
-                          ? "🔒 Critical Standby (ON 24/7)"
-                          : `Off ${z.start}:00–${zEndFmt}:00${z.isZoneOverridden ? " · Zone Override (Locked)" : " · Follows Floor"}${z.circuitOvCount > 0 ? ` · ${z.circuitOvCount} Circuit Override` : ""}`}
+                          ? "Critical standby, always on"
+                          : `Off ${z.start}:00–${zEndFmt}:00${z.isZoneOverridden ? " · own curfew" : ""}${z.circuitOvCount > 0 ? ` · ${z.circuitOvCount} circuit override${z.circuitOvCount > 1 ? "s" : ""}` : ""}`}
                       </small>
                     </span>
                     <span className="rank-bar">
-                      <i style={{ width: `${isAllCritical ? 100 : (z.kwh / maxZoneKwh) * 100}%`, background: isAllCritical ? "var(--comfy)" : z.isZoneOverridden || z.circuitOvCount > 0 ? "var(--amber)" : "var(--warm)", opacity: isAllCritical ? 0.35 : 1 }} />
+                      <i style={{ width: `${isAllCritical ? 100 : (z.kwh / maxZoneKwh) * 100}%`, background: isAllCritical ? "var(--comfy)" : z.isZoneOverridden || z.circuitOvCount > 0 ? "var(--inspect)" : "var(--warm)", opacity: isAllCritical ? 0.35 : 1 }} />
                     </span>
                     <span className="rank-val">
-                      <b>{isAllCritical ? "ON 24/7" : kwh(z.kwh)}</b>
+                      <b>{isAllCritical ? "Always on" : kwh(z.kwh)}</b>
                       <small>{isAllCritical ? "Locked" : thb(z.thb)}</small>
                     </span>
                   </button>
@@ -461,9 +453,9 @@ function AuditSavings() {
 
       {/* LEVEL 3 -> LEVEL 4: ZONE -> THE 2 CIRCUITS (LIGHT & PLUG) */}
       {isZone && zoneAudit && (
-        <div className="circuit-exemptions-section" style={{ marginTop: 14 }}>
+        <div className="circuit-exemptions-section">
           <div className="circuit-exemptions-header">
-            <h3 className="glance-h">Zone {scope.zone?.slice(1)} Circuits (Light & Plug)</h3>
+            <h3 className="glance-h">Circuits</h3>
           </div>
           <div className="circuit-cards">
             {zoneAudit.circuits.map((c) => {
@@ -485,26 +477,29 @@ function AuditSavings() {
                   <div className="circuit-card-main">
                     <div>
                       <strong>{c.circuit_id.replace(/\(kW\)/i, "")}</strong>
-                      <span className="zone-popup-badge" style={{ color: AUDIT_CLASS_COLORS[c.classification], marginLeft: 8 }}>
+                      <span className="zone-popup-badge" style={{ color: AUDIT_CLASS_COLORS[c.classification] }}>
                         {c.classification}
                       </span>
                     </div>
                     <small>
                       {c.type} · Base {c.baseload_kw.toFixed(2)} kW · Unocc {(c.unocc_mean_kw ?? 0).toFixed(2)} kW
-                      {isCircuitOverridden ? " · Circuit Override (Locked)" : !isCritical ? ` · Follows ${resolved.source === "zone" ? "Zone" : resolved.source === "floor" ? "Floor" : "Building"}` : ""}
+                      {isCircuitOverridden ? " · own setting" : ""}
                     </small>
                   </div>
                   <div className="circuit-card-action">
                     {isCritical ? (
-                      <span className="badge-critical-lock">🔒 ON 24/7</span>
+                      <span className="badge-critical-lock">Always on</span>
                     ) : (
                       <div className="circuit-inline-controls">
                         <button
                           type="button"
+                          role="switch"
+                          aria-checked={!isExempt}
+                          aria-label={`After-hours curfew for ${c.circuit_id.replace(/\(kW\)/i, "")}`}
                           className={`circuit-toggle-btn ${isExempt ? "exempt" : "active"}`}
                           onClick={() => toggleCircuitExemption(c.circuit_id)}
                         >
-                          {isExempt ? "ON 24/7 (Exempt)" : "Curfew Off"}
+                          {isExempt ? "Exempt, stays on" : "On curfew"}
                         </button>
                         {!isExempt && (
                           <div className="circuit-window-selects">
@@ -512,7 +507,7 @@ function AuditSavings() {
                               className="mini"
                               value={resolved.start_hour}
                               onChange={(e) => setCircuitWindow(c.circuit_id, +e.target.value, resolved.end_hour)}
-                              title="Circuit curfew start hour"
+                              aria-label="Curfew start hour"
                             >
                               {START_HOURS.map((h) => (
                                 <option key={h} value={h}>{h}:00</option>
@@ -523,7 +518,7 @@ function AuditSavings() {
                               className="mini"
                               value={resolved.end_hour}
                               onChange={(e) => setCircuitWindow(c.circuit_id, resolved.start_hour, +e.target.value)}
-                              title="Circuit curfew end hour"
+                              aria-label="Curfew end hour"
                             >
                               {END_HOURS.map((h) => (
                                 <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>
@@ -534,9 +529,8 @@ function AuditSavings() {
                                 type="button"
                                 className="link"
                                 onClick={() => clearCircuitWindow(c.circuit_id)}
-                                title="Revert circuit to Zone curfew"
                               >
-                                ↺
+                                Reset
                               </button>
                             )}
                           </div>
@@ -563,7 +557,6 @@ function ZoneAtAGlance({ audit, measure }: { audit: EnergyAuditZone; measure: Ma
   const circuitExemptions = useStore((s) => s.auditCircuitExemptions);
   const circuitWindows = useStore((s) => s.auditCircuitWindows);
   const period = month ? monthLabel(month) : "Jul 2018–Jun 2019";
-  const use = zoneUse(audit.floor, audit.zone);
   const isLoad = measure === "audit_load";
 
   const kwhVal = month ? audit.monthly[month]?.surplus_kwh ?? 0 : audit.annual_surplus_kwh;
@@ -573,14 +566,14 @@ function ZoneAtAGlance({ audit, measure }: { audit: EnergyAuditZone; measure: Ma
 
   const sortedCircuits = [...audit.circuits].sort((a, b) => {
     const aKwh = month ? a.monthly[month]?.surplus_kwh ?? 0 : a.annual_surplus_kwh;
-    const bKwh = month ? b.monthly[month]?.cost_thb ?? 0 : b.annual_surplus_kwh;
+    const bKwh = month ? b.monthly[month]?.surplus_kwh ?? 0 : b.annual_surplus_kwh;
     return bKwh - aKwh;
   });
   const maxKwh = Math.max(...sortedCircuits.map((c) => (month ? c.monthly[month]?.surplus_kwh ?? 0 : c.annual_surplus_kwh)), 1e-9);
 
   return (
     <Section
-      title={`Floor ${audit.floor}, Zone ${audit.zone.slice(1)}`}
+      title="Zone Summary"
       aside={<span className="aside">{period}</span>}
       className="glance"
     >
@@ -589,23 +582,17 @@ function ZoneAtAGlance({ audit, measure }: { audit: EnergyAuditZone; measure: Ma
           label="Preventable Waste"
           value={kwh(kwhVal)}
           unit={thb(thbVal)}
-          hint="Preventable after-hours energy above P2.5 dynamic baselines (excl. VAT)"
+          hint="Above P2.5 dynamic baselines, excl. VAT"
         />
         <Stat
           label="Unoccupied Load"
           value={unoccMean !== null && unoccMean !== undefined ? `${unoccMean.toFixed(2)} kW` : "–"}
           unit={`Baseload ${totalBaseload.toFixed(2)} kW`}
-          hint={`Combined mean unoccupied load across ${audit.circuit_count} circuits`}
+          hint={`Mean across ${audit.circuit_count} circuits`}
         />
       </div>
 
-      {use && (
-        <p className="glance-lead">
-          <b>{use.name}</b> ({use.kindLabel.toLowerCase()}): {use.lever}
-        </p>
-      )}
-
-      <div className="zone-side-popup-chart" style={{ marginTop: 10, marginBottom: 12 }}>
+      <div className="zone-side-popup-chart">
         <h3 className="glance-h">{isLoad ? "Monthly After-Hours Load · kW" : "Monthly Preventable Energy · kWh"}</h3>
         {isLoad
           ? <AfterHoursLoadChart monthly={audit.monthly} selectedMonth={month} baselineKw={totalBaseload} />
@@ -631,9 +618,9 @@ function ZoneAtAGlance({ audit, measure }: { audit: EnergyAuditZone; measure: Ma
           );
           const effE = String(resolved.end_hour).padStart(2, "0");
           const schedLabel = isCritical
-            ? "Locked ON 24/7"
+            ? "Always on"
             : isExempt
-              ? "ON 24/7 (Exempt)"
+              ? "Exempt, stays on"
               : `Off ${resolved.start_hour}:00–${effE}:00`;
           return (
             <li key={c.circuit_id}>
@@ -652,7 +639,7 @@ function ZoneAtAGlance({ audit, measure }: { audit: EnergyAuditZone; measure: Ma
                   />
                 </span>
                 <span className="rank-val">
-                  <b>{isCritical ? "ON 24/7" : kwh(cKwh)}</b>
+                  <b>{isCritical ? "Always on" : kwh(cKwh)}</b>
                   <small>{isCritical ? `${c.baseload_kw.toFixed(2)} kW base` : thb(cThb)}</small>
                 </span>
               </div>

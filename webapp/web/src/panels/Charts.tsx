@@ -13,7 +13,7 @@ const axis = {
 const tooltip = {
   backgroundColor: "#0f1d31", borderColor: "#2a4062", textStyle: { color: C.ink, fontSize: 12, fontFamily: "inherit" },
 };
-const base = { backgroundColor: "transparent", textStyle: { fontFamily: "Plus Jakarta Sans Variable, Segoe UI, sans-serif" }, animationDuration: 400 };
+const base = { aria: { enabled: true }, backgroundColor: "transparent", textStyle: { fontFamily: "Plus Jakarta Sans Variable, Segoe UI, sans-serif" }, animationDuration: 400 };
 
 export function LoadChart({ data, height = 190 }: { data: LoadPattern; height?: number }) {
   const option = useMemo(() => {
@@ -54,9 +54,9 @@ export function PreventableEnergyChart({ monthly, selectedMonth }: {
       return `${monthLabel(months[index])}<br/><b>${Math.round(period.surplus_kwh).toLocaleString()} kWh preventable</b><br/>฿${Math.round(period.cost_thb ?? 0).toLocaleString()} estimated cost (excl. VAT)<br/>Coverage ${period.energy_coverage_pct}%`;
     } },
     xAxis: { type: "category", data: months, ...axis, splitLine: { show: false },
-      axisLabel: { ...axis.axisLabel, rotate: 45, fontSize: 9, formatter: (value: string) => monthLabel(value).replace(" 20", " ’") } },
+      axisLabel: { ...axis.axisLabel, rotate: 45, fontSize: 10, formatter: (value: string) => monthLabel(value).replace(" 20", " ’") } },
     yAxis: { type: "value", ...axis, name: "kWh", nameTextStyle: { color: C.muted, fontSize: 10, align: "left" },
-      axisLabel: { ...axis.axisLabel, fontSize: 9, formatter: (value: number) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : `${value}` } },
+      axisLabel: { ...axis.axisLabel, fontSize: 10, formatter: (value: number) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : `${value}` } },
     series: [{ type: "bar", barMaxWidth: 20,
       data: months.map((month) => ({ value: monthly[month]?.surplus_kwh ?? null,
         itemStyle: { color: month === selectedMonth ? "#f49a4b" : "#5fa8e8", borderRadius: [3, 3, 0, 0] } })),
@@ -83,10 +83,10 @@ export function AfterHoursLoadChart({ monthly, selectedMonth, baselineKw }: {
       return `${monthLabel(month)}<br/><b>${period.unocc_mean_kw.toFixed(3)} kW mean after-hours load</b><br/>Circuit baseload ${baselineKw.toFixed(3)} kW<br/>${energyText}<br/>Coverage ${period.load_coverage_pct}%`;
     } },
     xAxis: { type: "category", data: months, ...axis, splitLine: { show: false },
-      axisLabel: { ...axis.axisLabel, interval: Math.max(1, Math.ceil(months.length / 9)), fontSize: 9,
+      axisLabel: { ...axis.axisLabel, interval: Math.max(1, Math.ceil(months.length / 9)), fontSize: 10,
         formatter: (value: string) => monthLabel(value).replace(" 20", " ’") } },
     yAxis: { type: "value", ...axis,
-      axisLabel: { ...axis.axisLabel, fontSize: 9, formatter: (value: number) => value.toFixed(value < 1 ? 2 : 1) } },
+      axisLabel: { ...axis.axisLabel, fontSize: 10, formatter: (value: number) => value.toFixed(value < 1 ? 2 : 1) } },
     series: [
       { name: "Mean load", type: "bar", barMaxWidth: 20,
         data: months.map((month) => ({ value: monthly[month]?.unocc_mean_kw ?? null,
@@ -94,7 +94,7 @@ export function AfterHoursLoadChart({ monthly, selectedMonth, baselineKw }: {
       },
       { name: "Baseload", type: "line", data: months.map((month) => monthly[month]?.unocc_mean_kw == null ? null : baselineKw),
         symbol: "none", connectNulls: false, lineStyle: { color: "#f3bf65", width: 2, type: "dashed" },
-        endLabel: { show: true, formatter: `${baselineKw.toFixed(3)} kW`, color: "#f3bf65", fontSize: 9, distance: 3 } },
+        endLabel: { show: true, formatter: `${baselineKw.toFixed(3)} kW`, color: "#f3bf65", fontSize: 10, distance: 3 } },
     ],
   }), [monthly, months, selectedMonth, baselineKw]);
   return <ReactECharts option={option} style={{ height: 196 }} notMerge />;
@@ -114,7 +114,7 @@ export function FloorEnergyChart({ data, periodLabel }: {
     xAxis: { type: "category", data: data.map((item) => `Floor ${item.floor}`), ...axis,
       splitLine: { show: false }, axisLabel: { ...axis.axisLabel, fontSize: 10 } },
     yAxis: { type: "value", ...axis, name: "kWh", nameTextStyle: { color: C.muted, fontSize: 10, align: "left" },
-      axisLabel: { ...axis.axisLabel, fontSize: 9, formatter: (value: number) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : `${value}` } },
+      axisLabel: { ...axis.axisLabel, fontSize: 10, formatter: (value: number) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : `${value}` } },
     series: [{ type: "bar", barMaxWidth: 32,
       data: data.map((item) => ({ value: item.energyKwh, itemStyle: { color: "#5fa8e8", borderRadius: [4, 4, 0, 0] } })) }],
   }), [data]);
@@ -143,12 +143,12 @@ export function CircuitEnergyHeatmap({ circuits, selectedMonth }: {
       return `${item.name}<br/>${monthLabel(months[col])}<br/><b>${raw < 0 ? "No meter readings" : `${raw.toLocaleString(undefined, { maximumFractionDigits: 1 })} kWh preventable`}</b>`;
     } },
     xAxis: { type: "category", data: months, ...axis, splitArea: { show: false },
-      axisLabel: { ...axis.axisLabel, rotate: 45, fontSize: 9, formatter: (value: string) => monthLabel(value).replace(" 20", " ’"),
+      axisLabel: { ...axis.axisLabel, rotate: 45, fontSize: 10, formatter: (value: string) => monthLabel(value).replace(" 20", " ’"),
         color: (value: string) => value === selectedMonth ? C.warm : C.muted, fontWeight: 600 } },
     yAxis: { type: "category", data: rows.map((circuit) => circuit.circuit_id), inverse: true, ...axis,
-      axisLabel: { ...axis.axisLabel, fontSize: 9, width: 124, overflow: "truncate" }, splitArea: { show: false } },
+      axisLabel: { ...axis.axisLabel, fontSize: 10, width: 124, overflow: "truncate" }, splitArea: { show: false } },
     visualMap: { min: 0, max, calculable: false, orient: "horizontal", left: "center", bottom: 2,
-      text: ["High", "0"], textStyle: { color: C.muted, fontSize: 9 }, inRange: { color: ["#53677e", "#8c6540", "#bd8245", "#f1b45e"] },
+      text: ["High", "0"], textStyle: { color: C.muted, fontSize: 10 }, inRange: { color: ["#53677e", "#8c6540", "#bd8245", "#f1b45e"] },
       outOfRange: { color: "rgba(0,0,0,0)" } },
     series: [{ type: "heatmap", data: values, progressive: 0,
       emphasis: { itemStyle: { borderColor: C.ink, borderWidth: 1 } } }],

@@ -56,11 +56,9 @@ function ScopeHeader({ zones }: { zones: ZoneInfo[] }) {
         <h1>Floor {scope.floor}, {zoneName(scope.zone).toLowerCase()}</h1>
         {use && <p className="zone-use">{use.name}</p>}
         <p>{auditLayer
-          ? audit ? measure === "audit_load"
-            ? `${audit.circuit_count} audited circuits · mean after-hours load for ${month ? monthLabel(month) : "all recorded months"}.`
-            : `${audit.circuit_count} audited circuits · ${audit.preventable_count} preventable, ${audit.critical_count} critical standby.`
-            : "No Question A circuit data for this zone."
-          : z?.status === "nodata" ? z.note : z?.has_ac ? "Temperature, humidity and AC power metered." : "Temperature and humidity only; no AC circuit metered."}</p>
+          ? audit ? `${audit.circuit_count} circuits · ${audit.preventable_count} preventable, ${audit.critical_count} critical standby`
+            : "No circuit data for this zone."
+          : z?.status === "nodata" ? z.note : z?.has_ac ? "Temperature, humidity and AC metered." : "Temperature and humidity only, no AC meter."}</p>
         {use && <p className="zone-lever">{use.lever}</p>}
         <div className="badges">
           {use && <span className="badge">{use.kindLabel}</span>}
@@ -77,12 +75,10 @@ function ScopeHeader({ zones }: { zones: ZoneInfo[] }) {
     <div className="scope">
       <h1>{scope.floor ? `Floor ${scope.floor}` : "Whole Building"}</h1>
       <p>{auditLayer
-        ? `${[...auditById.values()].filter((a) => scope.floor === undefined || a.floor === scope.floor).reduce((n, a) => n + a.circuit_count, 0)} audited circuits. ${measure === "audit_load"
-          ? month ? `After-hours load is the mean of recorded unoccupied readings for ${monthLabel(month)}.` : "After-hours load is the clean-year mean for Jul 2018–Jun 2019."
-          : month ? `Energy uses recorded after-hours readings for ${monthLabel(month)}; cost uses the peak/off-peak tariff.` : "Annual figures are estimates from the circuit audit."}`
-        : <>{scope.floor ? `${zones.length} zones, ${sensors} with temperature and humidity sensors.`
-          : "Office hours only: workdays 08:00–17:00, lunch hour excluded."}
-          {scope.floor === 1 && " Floor 1 has no indoor sensors, so it can’t be scored for comfort."}</>}</p>
+        ? `${[...auditById.values()].filter((a) => scope.floor === undefined || a.floor === scope.floor).reduce((n, a) => n + a.circuit_count, 0)} audited circuits · ${month ? monthLabel(month) : "Jul 2018–Jun 2019"}`
+        : <>{scope.floor ? `${zones.length} zones, ${sensors} with sensors.`
+          : "Office hours: workdays 08:00–17:00, excluding lunch."}
+          {scope.floor === 1 && " No indoor sensors on Floor 1."}</>}</p>
     </div>
   );
 }
@@ -140,6 +136,7 @@ function OccupantComfortSection({ results, zones, zone }: { results: ZoneResult[
 
 // --- Energy Section ---------------------------------------------------------------------------
 function EnergySection({ results }: { results: ZoneResult[] }) {
+  const { meta } = useData();
   const mode = useStore((s) => s.mode);
   const scope = useStore((s) => s.scope);
   const month = useStore((s) => s.month);
@@ -148,10 +145,10 @@ function EnergySection({ results }: { results: ZoneResult[] }) {
   const w = mode === "whatif";
   if (!results.length) return null;
 
-  // Calculate EUI (Energy Use Intensity) for building or floor level only
+  // Cooling EUI (office-hours AC per m²) for building or floor level only
   const BUILDING_AREA_M2 = 11700;
   const FLOOR_AREA_M2 = BUILDING_AREA_M2 / 7;
-  const OFFICE_HOURS_PER_YEAR = 2080;
+  const periodsPerYear = meta?.rules.office_periods_per_year ?? 7776;
   const showEUI = !scope.zone; // Show EUI for whole building or single floor, not for zones
 
   let euiBefore: number | null = null;
@@ -159,13 +156,12 @@ function EnergySection({ results }: { results: ZoneResult[] }) {
 
   if (showEUI && a.periods > 0) {
     const area = scope.floor === undefined ? BUILDING_AREA_M2 : FLOOR_AREA_M2;
-    // Convert kWh to annual kWh, then divide by area
-    // periods are 15-min intervals, so divide by 0.25 to get hours
-    const hoursInData = a.periods * 0.25;
-    const annualKwhBefore = (a.ac_kwh / hoursInData) * OFFICE_HOURS_PER_YEAR;
-    const annualKwhAfter = ((a.ac_kwh - b.saved_kwh) / hoursInData) * OFFICE_HOURS_PER_YEAR;
-    euiBefore = annualKwhBefore / area;
-    euiAfter = annualKwhAfter / area;
+    // Annualise each zone on its own periods, then sum: zones' periods overlap in time,
+    // so dividing the pooled kWh by the pooled periods would give one average zone, not the building.
+    const annualKwh = (after: boolean) => results.reduce((n, z) => z.before.periods
+      ? n + ((after ? z.before.ac_kwh - z.after.saved_kwh : z.before.ac_kwh) / z.before.periods) * periodsPerYear : n, 0);
+    euiBefore = annualKwh(false) / area;
+    euiAfter = annualKwh(true) / area;
   }
 
   return (
@@ -184,11 +180,11 @@ function EnergySection({ results }: { results: ZoneResult[] }) {
         />
         {showEUI && euiBefore !== null && (
           <Stat
-            label="EUI (Annual)"
+            label="Cooling EUI (Office Hours)"
             value={n1(euiBefore)}
             after={w ? n1(euiAfter!) : null}
             unit="kWh/m²/year"
-            hint={`Energy Use Intensity for ${scope.floor === undefined ? 'whole building (11,700 m²)' : `floor ${scope.floor} (${Math.round(FLOOR_AREA_M2)} m²)`}`}
+            hint={`Office-hours AC over ${n0(periodsPerYear / 4)} h a year, per m² of ${scope.floor === undefined ? 'the building (11,700 m²)' : `floor ${scope.floor} (${Math.round(FLOOR_AREA_M2)} m²)`}`}
             change={w && euiBefore !== 0 ? {
               value: ((euiAfter! - euiBefore) / euiBefore) * 100,
               type: 'pct',
@@ -236,8 +232,7 @@ function ComfortMix({ results }: { results: ZoneResult[] }) {
           </span>
         ))}
       </div>
-      <p className="note">The three shares add up to 100 % of office time (PMV comfort band −0.5 to +0.5).</p>
-      <p className="note" style={{ marginBottom: "20px" }}>
+      <p className="note">
         Humid (RH above 65 %): {n0(a.pct_humid)} % of office time{mode === "whatif" ? `, ${n0(b.pct_humid)} % after` : ""}.
         Mean PMV {pmvTxt(a.mean_pmv)}{mode === "whatif" ? ` → ${pmvTxt(b.mean_pmv)}` : ""}.
       </p>
@@ -264,10 +259,10 @@ function WhatIf({ results, zones }: { results: ZoneResult[]; zones: ZoneInfo[] }
   const extra = b.saved_kwh < 0;          // a lower setpoint costs AC energy instead of saving it
 
   return (
-    <Section title="Setpoint What-If" collapsible={true} defaultOpen={false} aside={nOverrides ? <button className="link" onClick={() => setWhatif({ overrides: {} })}>Clear {nOverrides} Zone Override{nOverrides > 1 ? "s" : ""}</button> : null}>
-      <div className="segmented wide">
-        <button className={whatif.mode === "rule" ? "on" : ""} onClick={() => setWhatif({ mode: "rule" })}>Rule Recommendation</button>
-        <button className={whatif.mode === "global" ? "on" : ""} onClick={() => setWhatif({ mode: "global" })}>Same Change Everywhere</button>
+    <Section title="Setpoint What-If" collapsible={true} defaultOpen={true} aside={nOverrides ? <button className="link" onClick={() => setWhatif({ overrides: {} })}>Clear {nOverrides} Zone Override{nOverrides > 1 ? "s" : ""}</button> : null}>
+      <div className="segmented wide" role="group" aria-label="Setpoint scenario">
+        <button type="button" className={whatif.mode === "rule" ? "on" : ""} aria-pressed={whatif.mode === "rule"} onClick={() => setWhatif({ mode: "rule" })}>Rule Recommendation</button>
+        <button type="button" className={whatif.mode === "global" ? "on" : ""} aria-pressed={whatif.mode === "global"} onClick={() => setWhatif({ mode: "global" })}>Same Change Everywhere</button>
       </div>
       {whatif.mode === "global" ? (
         <label className="slider">
@@ -276,8 +271,8 @@ function WhatIf({ results, zones }: { results: ZoneResult[]; zones: ZoneInfo[] }
         </label>
       ) : (
         <p className="note">
-          Each zone and month: raise {rules?.raise_step_c ?? 1} °C at a time while more than {n0((rules?.raise_if_too_cool ?? 0.25) * 100)} % of office time is too cool,
-          up to +{rules?.max_raise_c ?? 3} °C. Roll back a step if more than {n0((rules?.too_warm_tolerance ?? 0.1) * 100)} % would be too warm, or more time would be humid.
+          Per zone and month: +{rules?.raise_step_c ?? 1} °C steps while over {n0((rules?.raise_if_too_cool ?? 0.25) * 100)} % of office time is too cool, up to +{rules?.max_raise_c ?? 3} °C.
+          Stops before over {n0((rules?.too_warm_tolerance ?? 0.1) * 100)} % is too warm or humid time rises.
         </p>
       )}
 
@@ -289,7 +284,7 @@ function WhatIf({ results, zones }: { results: ZoneResult[]; zones: ZoneInfo[] }
           {override !== undefined && <button className="link" onClick={() => setOverride(zone.id, null)}>Use the {whatif.mode === "rule" ? "Rule" : "Building Setting"} Again</button>}
         </label>
       )}
-      {zone && !zone.simulated && zone.status === "data" && <p className="note">No AC circuit metered here, so there’s no setpoint to simulate.</p>}
+      {zone && !zone.simulated && zone.status === "data" && <p className="note">No AC meter here, so nothing to simulate.</p>}
 
       <div className="result">
         <div>
@@ -300,13 +295,13 @@ function WhatIf({ results, zones }: { results: ZoneResult[]; zones: ZoneInfo[] }
         <div>
           <span className="stat-label">Over the Guardrail</span>
           <span className={`big ${breaches.length ? "bad" : ""}`}>{breaches.length}</span>
-          <span className="sub">{breaches.length ? `zones outside the comfort guardrail in at least one month: ${breaches.map((z) => z.id.replace(":", " ")).join(", ")}` : "no zone goes too warm, too humid or colder than today in any month"}</span>
+          <span className="sub">{breaches.length ? breaches.map((z) => z.id.replace(":", " ")).join(", ") : "No zone too warm, humid or too cool"}</span>
         </div>
       </div>
       {Math.abs(whatif.mode === "global" ? whatif.globalC : 0) > (rules?.max_raise_c ?? 3) || Object.values(whatif.overrides).some((c) => Math.abs(c) > (rules?.max_raise_c ?? 3))
-        ? <p className="note">Beyond ±{rules?.max_raise_c ?? 3} °C the energy and moisture slopes are extrapolated from smaller changes, so treat these figures as rough. A lower setpoint’s extra AC is capped at each zone’s highest metered power.</p>
+        ? <p className="note">Beyond ±{rules?.max_raise_c ?? 3} °C these figures are extrapolated. Treat them as rough.</p>
         : null}
-      {!scope.zone && <p className="note">Zones on the check-first list stay at today’s setpoint unless you override them. Annual figures scale the sensor months to {n0(meta?.rules.office_periods_per_year ? meta.rules.office_periods_per_year / 4 : 1944)} office hours a year.</p>}
+      {!scope.zone && <p className="note">Check-first zones keep today’s setpoint unless overridden. Annual figures assume {n0(meta?.rules.office_periods_per_year ? meta.rules.office_periods_per_year / 4 : 1944)} office hours.</p>}
     </Section>
   );
 }
@@ -425,7 +420,6 @@ function ZoneGrid({ zones, measureOverride, onZoneSelect }: { zones: ZoneInfo[];
           ? Object.entries(AUDIT_CLASS_COLORS).map(([label, color]) => <span key={label}><i style={{ background: color }} />{label}</span>)
           : <><span>0 {measure === "audit_kwh" ? "kWh" : "kW"}</span><i className="zone-heat-scale" style={{ background: `linear-gradient(90deg, ${[0, .25, .5, .75, 1].map((t) => auditValueColor(auditMax * t * t, auditMax)).join(", ")})` }} /><span>{n1(auditMax)} {measure === "audit_kwh" ? "kWh" : "kW"}</span></>}
       </div>}
-      {measure === "audit_load" && <p className="zone-map-note">Circle color shows mean after-hours load. Click a zone for its Waste Status, circuits, and energy details.</p>}
     </Section>
   );
 }
@@ -439,18 +433,18 @@ function Alerts({ zones, results }: { zones: ZoneInfo[]; results: ZoneResult[] }
   if (mode === "whatif")
     for (const r of results.filter((z) => z.breach.length))
       alerts.push({ id: r.id, level: "red", title: `${r.id.replace(":", " ")} would go ${r.breach.join(" and ")}`,
-        detail: `Fails the guardrail in ${r.breach_months.length} month${r.breach_months.length > 1 ? "s" : ""} (${r.breach_months.map(monthLabel).join(", ")}). Move this zone a step back towards today's setpoint in those months.` });
+        detail: `In ${r.breach_months.map(monthLabel).join(", ")}. Step it back toward today's setpoint.` });
   for (const z of zones.filter((z) => z.inspect))
     alerts.push({ id: z.id, level: "amber", title: `${z.id.replace(":", " ")}: check before adjusting`, detail: z.inspect! });
   for (const z of zones.filter((z) => z.baseline && !z.baseline.passes))
     alerts.push({ id: z.id, level: "grey", title: `${z.id.replace(":", " ")}: baseline model misses ASHRAE 14`,
-      detail: `CV(RMSE) ${n1(z.baseline!.cv_rmse_pct)} %, NMBE ${n1(z.baseline!.nmbe_pct)} % on Jul–Dec 2019. Treat its savings as indicative.` });
+      detail: `CV(RMSE) ${n1(z.baseline!.cv_rmse_pct)} %, NMBE ${n1(z.baseline!.nmbe_pct)} %. Savings are indicative.` });
   if (!alerts.length) return null;
   const item = (a: Alert, i: number) => {
     const [f, z] = a.id.slice(1).split(":");
     return (
       <li key={i} className={a.level}>
-        <button onClick={() => select({ floor: +f, zone: z })}>
+        <button type="button" onClick={() => select({ floor: +f, zone: z })}>
           <b>{a.title}</b>
           <span>{a.detail}</span>
         </button>
@@ -468,7 +462,7 @@ function Alerts({ zones, results }: { zones: ZoneInfo[]; results: ZoneResult[] }
             <details>
               <summary>
                 <b>{model.length} zones’ baseline models miss ASHRAE 14</b>
-                <span>Mostly bias (NMBE above 10 %) on Jul–Dec 2019. Their savings are indicative. Show zones</span>
+                <span>Savings are indicative. Show zones</span>
               </summary>
               <ul className="alerts nested">{model.map(item)}</ul>
             </details>
@@ -490,9 +484,8 @@ function Load() {
         : <>
           <LoadChart data={data} />
           <p className="note">
-            The baseline predicts normal AC from outdoor weather (including sun and the past day’s heat), the zone’s
-            lighting and plug use, hour, weekday and holidays. Trained Jul 2018 – Jun 2019, with closures and outages left out.
-            {data.test_actual_kwh !== undefined && ` Test period: ${kwh(data.test_actual_kwh)} actual against ${kwh(data.test_baseline_kwh)} predicted.`}
+            Baseline from weather, lighting and plug use, hour, weekday and holidays, trained Jul 2018–Jun 2019.
+            {data.test_actual_kwh !== undefined && ` Test period: ${kwh(data.test_actual_kwh)} actual, ${kwh(data.test_baseline_kwh)} predicted.`}
           </p>
         </>}
     </Section>
@@ -514,7 +507,7 @@ function Heat({ zones }: { zones: ZoneInfo[] }) {
         <option value="pct_humid">% Humid</option>
       </select>}>
       <HeatMap cells={cells} months={meta!.months} measure={key} onPick={(f, z) => select({ floor: f, zone: z })} />
-      <p className="note">Mid-Sep 2018 to Feb 2019 is missing: the indoor sensors weren’t recording.</p>
+      <p className="note">No sensor data from mid-Sep 2018 to Feb 2019.</p>
     </Section>
   );
 }
@@ -533,13 +526,13 @@ function ZoneDetailSection({ zone, result }: { zone: ZoneInfo; result?: ZoneResu
       {zone.kw_per_c !== null && (
         <Section title="What One Degree Is Worth Here">
           <div className="stats">
-            <Stat label="AC Saved per +1 °C" value={n1(zone.kw_per_c)} unit="kW" hint={`${zone.kw_per_c_source} regression on daily office-hour data`} />
+            <Stat label="AC Saved per +1 °C" value={n1(zone.kw_per_c)} unit="kW" />
             <Stat label="Share of This Zone’s AC" value={n1(zone.pct_per_c)} unit="%" />
             <Stat label="Mean AC Power" value={result ? n1(acKw(result.before, false)) : "–"} unit="kW" />
           </div>
           <p className="note">
-            Estimated from {zone.kw_per_c_source === "zone" ? "this zone’s own" : "the whole floor’s"} daily data: AC power against zone temperature, holding outdoor weather and weekday fixed.
-            Moisture rises about {n1(zone.moisture_per_c)} g/kg per °C as the coil dehumidifies less.
+            From {zone.kw_per_c_source === "zone" ? "this zone’s" : "the floor’s"} daily data, controlling for weather and weekday.
+            Moisture rises about {n1(zone.moisture_per_c)} g/kg per °C.
           </p>
         </Section>
       )}

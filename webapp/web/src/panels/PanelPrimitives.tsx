@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 export function Section({ title, aside, children, collapsible = false, defaultOpen = true, className }: {
   title: string;
@@ -9,6 +9,7 @@ export function Section({ title, aside, children, collapsible = false, defaultOp
   className?: string;
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
+  const bodyId = useId();
 
   if (!collapsible) {
     return (
@@ -19,47 +20,21 @@ export function Section({ title, aside, children, collapsible = false, defaultOp
     );
   }
 
+  // The title is the disclosure button; the aside stays outside it because it can hold its own buttons.
   return (
     <section className={`sec ${className || ""}`}>
-      <div
-        className="sec-head"
-        style={{ cursor: "pointer", userSelect: "none", position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between" }}
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1, minWidth: 0 }}>
-          <h2>{title}</h2>
-          {aside}
-        </div>
-        <button
-          style={{
-            flexShrink: 0,
-            width: "24px",
-            height: "24px",
-            borderRadius: "50%",
-            border: "none",
-            background: "rgba(220, 226, 234, 0.85)",
-            color: "#0a1628",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "18px",
-            fontWeight: "normal",
-            cursor: "pointer",
-            padding: 0,
-            marginLeft: "16px",
-            lineHeight: "0",
-            fontFamily: "monospace",
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsOpen(!isOpen);
-          }}
-          aria-label={isOpen ? "Collapse section" : "Expand section"}
-        >
-          {isOpen ? "−" : "+"}
-        </button>
+      <div className="sec-head">
+        <h2>
+          <button type="button" className="sec-toggle" aria-expanded={isOpen} aria-controls={bodyId} onClick={() => setIsOpen(!isOpen)}>
+            <svg className="sec-chevron" viewBox="0 0 12 12" width="12" height="12" aria-hidden>
+              <path d="M4 2.5 7.5 6 4 9.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {title}
+          </button>
+        </h2>
+        {aside}
       </div>
-      {isOpen && children}
+      <div id={bodyId} hidden={!isOpen}>{isOpen && children}</div>
     </section>
   );
 }
@@ -80,23 +55,10 @@ export function Stat({ label, value, after, unit, hint, change }: {
         {unit && <small>{unit}</small>}
       </span>
       {change && after && (
-        <span
-          className="stat-change"
-          style={{
-            display: "inline-block",
-            padding: "2px 6px",
-            borderRadius: "4px",
-            fontSize: "10px",
-            fontWeight: "600",
-            marginTop: "4px",
-            background: change.isImprovement ? "rgba(124, 200, 164, 0.2)" : "rgba(239, 91, 85, 0.2)",
-            color: change.isImprovement ? "#7cc8a4" : "#ef5b55",
-          }}
-        >
+        <span className={`stat-change ${change.isImprovement ? "good" : "bad"}`}>
           {change.value > 0 ? "+" : ""}{change.value.toFixed(1)}{change.type === 'pp' ? ' pp' : '%'}
         </span>
       )}
     </div>
   );
 }
-
