@@ -345,7 +345,8 @@ source,column,rule,readings_changed,detail
 2019Floor5.csv,z1_ac4_kw,short gap interpolated,592,gaps <= 30 min
 2019Floor5.csv,z1_light_kw,short gap interpolated,237,gaps <= 30 min
 2019Floor5.csv,z1_plug_kw,short gap interpolated,126,gaps <= 30 min
-2019Floor5.csv,z1_temp_c,short gap interpolated,3449,gaps <= 30 min
+2019Floor5.csv,z1_temp_c,out-of-range reading removed,33972,valid range 15.0-40.0
+2019Floor5.csv,z1_temp_c,short gap interpolated,14291,gaps <= 30 min
 2019Floor5.csv,z1_rh_pct,short gap interpolated,3449,gaps <= 30 min
 2019Floor5.csv,z1_lux,short gap interpolated,3449,gaps <= 30 min
 2019Floor5.csv,z2_ac1_kw,short gap interpolated,524,gaps <= 30 min

@@ -108,6 +108,8 @@ def load_table(floor: int, res: str = "hourly") -> pd.DataFrame:
     """Clean table from cubems_prepare; res is 'hourly' or '15min'."""
     path = PROCESSED_DIR / f"clean_{res}" / f"floor{floor}_{res}.csv"
     df = pd.read_csv(path, parse_dates=["timestamp"], index_col="timestamp")
+    # Hourly tables are in kWh, which is numerically the average kW over that hour.
+    df.columns = df.columns.str.replace(r"_kwh$", "_kw", regex=True)
     for col in BOOL_COLS:
         if col in df:
             df[col] = df[col].astype(str).str.lower().isin(["true", "1"])
