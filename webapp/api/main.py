@@ -38,6 +38,7 @@ def meta():
     return {
         "floors": sorted({z["floor"] for z in store.registry}),
         "zones": store.registry,
+        "floor_baselines": store.floor_baselines,
         "energy_audit": store.energy_audit,
         "afterhours_timing": store.afterhours_timing,
         "months": store.months,
@@ -85,14 +86,24 @@ def replay(date: str, body: WhatIf):
 
 @app.get("/api/load")
 def load_pattern(floor: int | None = None, zone: str | None = None):
-    """Weekly AC kWh in office hours: actual vs weather-normalised baseline."""
-    p = store.preds
+    """Weekly AC kWh in office hours: actual vs weather-normalised baseline.
+
+    A zone uses its own baseline. A floor uses the floor baseline (whole-floor AC) and the building
+    the sum of the floor baselines; without those, both fall back to summing the zone baselines."""
+    use_floors = zone is None and not store.floor_preds.empty
+    p = store.floor_preds if use_floors else store.preds
+    if zone is not None:
+        level = "zone"
+    elif not use_floors:
+        level = "zones"
+    else:
+        level = "floor" if floor is not None else "building"
     if floor is not None:
         p = p[p["floor"] == floor]
     if zone is not None:
         p = p[p["zone"] == zone]
     if p.empty:
-        return {"weeks": [], "actual": [], "baseline": [], "test_start": "2019-07-01"}
+        return {"weeks": [], "actual": [], "baseline": [], "test_start": "2019-07-01", "level": level}
     weekly = p.set_index("timestamp")[["ac_kw", "pred_chosen"]].resample("W").sum()   # hourly kW -> kWh
     weekly = weekly[(weekly["ac_kw"] > 0) | (weekly["pred_chosen"] > 0)]
     test = p[p["split"] == "test"]
@@ -101,6 +112,7 @@ def load_pattern(floor: int | None = None, zone: str | None = None):
         "actual": weekly["ac_kw"].round(1).tolist(),
         "baseline": weekly["pred_chosen"].round(1).tolist(),
         "test_start": "2019-07-01",
+        "level": level,
         "test_actual_kwh": round(float(test["ac_kw"].sum()), 0),
         "test_baseline_kwh": round(float(test["pred_chosen"].sum()), 0),
     }

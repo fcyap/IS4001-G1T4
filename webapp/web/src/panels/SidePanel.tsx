@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, type Summary, type ZoneInfo, type ZoneResult } from "../lib/api";
+import { api, type BaselineFit, type LoadPattern, type Summary, type ZoneInfo, type ZoneResult } from "../lib/api";
 import { AUDIT_CLASS_COLORS, auditValueColor, C, MEASURES } from "../lib/colors";
 import { acKw, replayValue, rollup, useData, useFetch, zoneValue } from "../lib/data";
 import { kwh, n0, n1, pmvTxt, signedC } from "../lib/format";
@@ -10,6 +10,56 @@ import { Section, Stat } from "./PanelPrimitives";
 import Overview from "./Overview";
 import Plan from "./Plan";
 import QuestionAPanel from "./QuestionAPanel";
+
+// --- Baselines (ASHRAE Guideline 14) ----------------------------------------------------------
+// Results are for the Jul–Dec 2019 test period. Zone baselines are for diagnosis; savings are
+// verified against the floor baselines (whole-floor AC), where load shifting between zones cancels.
+const passesBoth = (b: BaselineFit) => b.passes && b.passes_monthly;
+const signed1 = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)}`;
+
+/** The test-period criteria a baseline misses, e.g. ["hourly NMBE +16.2 %", "monthly NMBE +19.4 %"]. */
+function baselineMisses(b: BaselineFit): string[] {
+  const out: string[] = [];
+  if (b.cv_rmse_pct > 30) out.push(`hourly CV(RMSE) ${n1(b.cv_rmse_pct)} %`);
+  if (Math.abs(b.nmbe_pct) > 10) out.push(`hourly NMBE ${signed1(b.nmbe_pct)} %`);
+  if (b.monthly_cv_rmse_pct > 15) out.push(`monthly CV(RMSE) ${n1(b.monthly_cv_rmse_pct)} %`);
+  if (Math.abs(b.monthly_nmbe_pct) > 5) out.push(`monthly NMBE ${signed1(b.monthly_nmbe_pct)} %`);
+  return out;
+}
+
+function BaselineBadge({ b, label }: { b: BaselineFit; label: string }) {
+  const title = `Jul–Dec 2019 test: hourly CV(RMSE) ${n1(b.cv_rmse_pct)} %, NMBE ${signed1(b.nmbe_pct)} %; `
+    + `monthly CV(RMSE) ${n1(b.monthly_cv_rmse_pct)} %, NMBE ${signed1(b.monthly_nmbe_pct)} %. `
+    + "Limits: hourly 30 % and ±10 %, monthly 15 % and ±5 %."
+    + (b.fit_passes ? " Its fit on Jul 2018–Jun 2019 passes." : "");
+  if (passesBoth(b)) return <span className="badge ok" title={title}>{label} Baseline Passes ASHRAE 14</span>;
+  if (b.passes) return <span className="badge warn" title={title}>{label} Baseline Passes ASHRAE 14 Hourly, Not Monthly</span>;
+  return (
+    <span className="badge warn" title={title}>
+      {label} Baseline {b.fit_passes ? "Drifted in 2019 Test" : "Misses ASHRAE 14"} ({baselineMisses(b)[0]})
+    </span>
+  );
+}
+
+function FloorBaselineBadges({ floor }: { floor?: number }) {
+  const { meta } = useData();
+  const all = meta?.floor_baselines ?? [];
+  if (floor !== undefined) {
+    const b = all.find((x) => x.floor === floor);
+    return b ? <div className="badges"><BaselineBadge b={b} label="Floor" /></div> : null;
+  }
+  if (!all.length) return null;
+  const hourly = all.filter((b) => b.passes).length;
+  const monthly = all.filter((b) => b.passes_monthly).length;
+  return (
+    <div className="badges">
+      <span className={`badge ${hourly === all.length && monthly === all.length ? "ok" : "warn"}`}
+        title="Each floor's whole-floor AC baseline on the Jul–Dec 2019 test. Savings are verified against these; zone baselines are for diagnosis.">
+        Floor Baselines Pass ASHRAE 14: {hourly}/{all.length} Hourly, {monthly}/{all.length} Monthly
+      </span>
+    </div>
+  );
+}
 
 // --- Header -----------------------------------------------------------------------------------
 /** Back to wherever the user came from, plus arrows to step through the zones on this floor. */
@@ -41,7 +91,7 @@ function ScopeNav() {
 }
 
 function ScopeHeader({ zones }: { zones: ZoneInfo[] }) {
-  const { auditById } = useData();
+  const { auditById, meta } = useData();
   const scope = useStore((s) => s.scope);
   const measure = useStore((s) => s.measure);
   const month = useStore((s) => s.month);
@@ -51,6 +101,7 @@ function ScopeHeader({ zones }: { zones: ZoneInfo[] }) {
     const z = zones[0];
     const audit = z ? auditById.get(z.id) : undefined;
     const use = zoneUse(scope.floor!, scope.zone);
+    const floorBase = meta?.floor_baselines?.find((b) => b.floor === scope.floor);
     return (
       <div className="scope">
         <h1>Floor {scope.floor}, {zoneName(scope.zone).toLowerCase()}</h1>
@@ -64,9 +115,10 @@ function ScopeHeader({ zones }: { zones: ZoneInfo[] }) {
           {use && <span className="badge">{use.kindLabel}</span>}
           {auditLayer && audit && measure !== "audit_load" && <span className="badge" style={{ color: AUDIT_CLASS_COLORS[audit.classification], borderColor: AUDIT_CLASS_COLORS[audit.classification] }}>{audit.classification}</span>}
           {!auditLayer && z?.inspect && <span className="badge amber">Check First: {z.inspect}</span>}
-          {!auditLayer && z?.baseline && (z.baseline.passes
-            ? <span className="badge ok">Baseline Passes ASHRAE 14</span>
-            : <span className="badge warn">Baseline Misses ASHRAE 14 (NMBE {n1(z.baseline.nmbe_pct)} %)</span>)}
+          {!auditLayer && z?.baseline && <BaselineBadge b={z.baseline} label="Zone" />}
+          {/* When the zone baseline is off, point to the one that savings are verified against. */}
+          {!auditLayer && z?.baseline && !passesBoth(z.baseline) && floorBase &&
+            <BaselineBadge b={floorBase} label={`Floor ${scope.floor}`} />}
         </div>
       </div>
     );
@@ -79,6 +131,7 @@ function ScopeHeader({ zones }: { zones: ZoneInfo[] }) {
         : <>{scope.floor ? `${zones.length} zones, ${sensors} with sensors.`
           : "Office hours: workdays 08:00–17:00, excluding lunch."}
           {scope.floor === 1 && " No indoor sensors on Floor 1."}</>}</p>
+      {!auditLayer && <FloorBaselineBadges floor={scope.floor} />}
     </div>
   );
 }
@@ -428,6 +481,7 @@ function ZoneGrid({ zones, measureOverride, onZoneSelect }: { zones: ZoneInfo[];
 interface Alert { id: string; level: "red" | "amber" | "grey"; title: string; detail: string }
 
 function Alerts({ zones, results }: { zones: ZoneInfo[]; results: ZoneResult[] }) {
+  const { meta } = useData();
   const mode = useStore((s) => s.mode);
   const select = useStore((s) => s.select);
   const alerts: Alert[] = [];
@@ -437,9 +491,16 @@ function Alerts({ zones, results }: { zones: ZoneInfo[]; results: ZoneResult[] }
         detail: `In ${r.breach_months.map(monthLabel).join(", ")}. Step it back toward today's setpoint.` });
   for (const z of zones.filter((z) => z.inspect))
     alerts.push({ id: z.id, level: "amber", title: `${z.id.replace(":", " ")}: check before adjusting`, detail: z.inspect! });
-  for (const z of zones.filter((z) => z.baseline && !z.baseline.passes))
-    alerts.push({ id: z.id, level: "grey", title: `${z.id.replace(":", " ")}: baseline model misses ASHRAE 14`,
-      detail: `CV(RMSE) ${n1(z.baseline!.cv_rmse_pct)} %, NMBE ${n1(z.baseline!.nmbe_pct)} %. Savings are indicative.` });
+  const floorBase = new Map((meta?.floor_baselines ?? []).map((b) => [b.floor, b]));
+  for (const z of zones.filter((z) => z.baseline && !passesBoth(z.baseline))) {
+    const b = z.baseline!;
+    const fb = floorBase.get(z.floor);
+    const what = !b.passes ? (b.fit_passes ? "drifted" : "misses ASHRAE 14") : "misses ASHRAE 14 monthly";
+    const pointer = fb && passesBoth(fb) ? `; use the Floor ${z.floor} baseline, which passes`
+      : fb?.passes ? `; the Floor ${z.floor} baseline passes hourly` : "";
+    alerts.push({ id: z.id, level: "grey", title: `${z.id.replace(":", " ")}: zone baseline ${what}`,
+      detail: `Jul–Dec 2019 test: ${baselineMisses(b).join(", ")}. Not reliable for verifying savings in this zone${pointer}.` });
+  }
   if (!alerts.length) return null;
   const item = (a: Alert, i: number) => {
     const [f, z] = a.id.slice(1).split(":");
@@ -462,8 +523,8 @@ function Alerts({ zones, results }: { zones: ZoneInfo[]; results: ZoneResult[] }
           <li className="grey">
             <details>
               <summary>
-                <b>{model.length} zones’ baseline models miss ASHRAE 14</b>
-                <span>Savings are indicative. Show zones</span>
+                <b>{model.length} zones’ baselines miss ASHRAE 14 in the 2019 test</b>
+                <span>Not reliable for verifying savings there. Show zones</span>
               </summary>
               <ul className="alerts nested">{model.map(item)}</ul>
             </details>
@@ -475,6 +536,14 @@ function Alerts({ zones, results }: { zones: ZoneInfo[]; results: ZoneResult[] }
 }
 
 // --- Charts sections --------------------------------------------------------------------------
+const LOAD_NOTE: Record<NonNullable<LoadPattern["level"]>, string> = {
+  zone: "Zone baseline from weather, the zone's lighting and plug use, hour, weekday and holidays, trained Jul 2018–Jun 2019.",
+  floor: "Floor baseline (whole-floor AC) from weather, the floor's lighting and plug use, hour, weekday and holidays, "
+    + "trained Jul 2018–Jun 2019. This is the baseline to verify savings against.",
+  building: "Sum of the floor baselines (whole-floor AC on Floors 2–7), trained Jul 2018–Jun 2019.",
+  zones: "Sum of the zone baselines, from weather, lighting and plug use, hour, weekday and holidays, trained Jul 2018–Jun 2019.",
+};
+
 function Load() {
   const scope = useStore((s) => s.scope);
   const { data } = useFetch(`load|${scope.floor}|${scope.zone}`, (sig) => api.load(scope.floor, scope.zone, sig), 0);
@@ -485,7 +554,7 @@ function Load() {
         : <>
           <LoadChart data={data} />
           <p className="note">
-            Baseline from weather, lighting and plug use, hour, weekday and holidays, trained Jul 2018–Jun 2019.
+            {LOAD_NOTE[data.level ?? "zones"]}
             {data.test_actual_kwh !== undefined && ` Test period: ${kwh(data.test_actual_kwh)} actual, ${kwh(data.test_baseline_kwh)} predicted.`}
           </p>
         </>}

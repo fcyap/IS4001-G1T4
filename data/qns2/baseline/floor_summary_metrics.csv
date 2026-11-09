@@ -1,0 +1,7 @@
+floor,zone,chosen_model,test_hours,mean_kw,cv_rmse_pct,nmbe_pct,r2,passes_ashrae14,monthly_cv_rmse_pct,monthly_nmbe_pct,passes_ashrae14_monthly,daily_cv_rmse_pct,daily_nmbe_pct,rolling_cv_rmse_pct,rolling_abs_nmbe_pct,rolling_months_passing,fsu_pct,resid_lag1_autocorr,drift_handling,change_point_c,kw_per_c,kw_per_c_se_hac
+2,floor,HistGradientBoosting,982,64.311,12.86,2.4,0.144,True,6.21,2.88,True,10.73,2.42,11.34,3.48,6/6,3.5,0.435,none,33.0,5.541,0.375
+3,floor,Linear regression,976,59.385,10.58,-1.49,0.882,True,3.99,-1.78,True,7.03,-1.5,10.18,3.44,6/6,6.0,0.487,none,29.0,4.968,0.296
+4,floor,Linear regression,952,63.599,11.01,3.96,0.806,True,8.15,4.75,True,8.84,3.99,10.1,4.8,6/6,7.3,0.59,none,33.0,4.039,0.288
+5,floor,Linear regression,976,61.556,10.29,2.51,0.868,True,5.19,3.01,True,7.76,2.53,10.17,4.19,6/6,6.1,0.397,recency,29.0,5.523,0.382
+6,floor,Linear regression,612,55.169,12.86,5.78,0.823,True,7.11,7.69,False,10.01,5.84,11.9,4.49,4/4,8.3,0.415,recency,30.0,4.76,0.268
+7,floor,Linear regression,976,91.35,8.96,2.04,0.749,True,3.62,2.45,True,7.27,2.06,8.57,2.56,6/6,5.3,0.556,recency,31.5,5.356,0.219

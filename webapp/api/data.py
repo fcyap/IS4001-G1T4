@@ -31,7 +31,9 @@ class Store:
     inspection: pd.DataFrame
     slopes: pd.DataFrame
     monthly: pd.DataFrame
-    preds: pd.DataFrame             # hourly actual vs baseline, occupied hours
+    preds: pd.DataFrame             # hourly actual vs zone baseline, occupied hours
+    floor_preds: pd.DataFrame       # hourly actual vs floor baseline (whole-floor AC); empty if not built
+    floor_baselines: list[dict]     # one ASHRAE 14 summary per floor baseline
     registry: list[dict]
     energy_audit: list[dict]
     afterhours_timing: dict[str, list[dict]]
@@ -39,7 +41,45 @@ class Store:
     office_days: list[str]
 
 
-def _zone_registry(zone_summary, slopes, inspection, baseline) -> list[dict]:
+def _compliance() -> dict:
+    """(level, floor, zone, period) -> ASHRAE 14 row from qb_baseline_model; {} if not built yet."""
+    path = qc.BASELINE_DIR / "ashrae14_compliance.csv"
+    if not path.exists():
+        return {}
+    return {(r.level, int(r.floor), r.zone, r.period): r for r in pd.read_csv(path).itertuples()}
+
+
+def _baseline_entry(row, compliance: dict, level: str, floor: int, unit: str) -> dict:
+    """Test-period ASHRAE 14 results (hourly and monthly) plus whether the baseline-period fit passes.
+    A baseline whose fit passes but whose test fails has drifted."""
+    fit = compliance.get((level, floor, unit, "baseline"))
+    return {
+        "model": row.chosen_model, "cv_rmse_pct": float(row.cv_rmse_pct),
+        "nmbe_pct": float(row.nmbe_pct), "r2": float(row.r2),
+        "passes": bool(row.passes_ashrae14),
+        "monthly_cv_rmse_pct": float(row.monthly_cv_rmse_pct), "monthly_nmbe_pct": float(row.monthly_nmbe_pct),
+        "passes_monthly": bool(row.passes_ashrae14_monthly),
+        "fit_passes": None if fit is None else bool(fit.passes_hourly and fit.passes_monthly),
+    }
+
+
+def _floor_baselines(compliance: dict) -> list[dict]:
+    path = qc.BASELINE_DIR / "floor_summary_metrics.csv"
+    if not path.exists():
+        return []
+    return [{"floor": int(r.floor), **_baseline_entry(r, compliance, "floor", int(r.floor), "floor")}
+            for r in pd.read_csv(path).itertuples()]
+
+
+def _read_preds(folder: Path) -> pd.DataFrame:
+    frames = [pd.read_csv(folder / f"floor{f}" / "predictions_occupied_hours.csv", parse_dates=["timestamp"],
+                          usecols=["timestamp", "zone", "split", "ac_kw", "pred_chosen"]).assign(floor=f)
+              for f in qc.FLOORS if (folder / f"floor{f}" / "predictions_occupied_hours.csv").exists()]
+    return pd.concat(frames) if frames else pd.DataFrame(
+        columns=["timestamp", "zone", "split", "ac_kw", "pred_chosen", "floor"])
+
+
+def _zone_registry(zone_summary, slopes, inspection, baseline, compliance) -> list[dict]:
     sensor = {(r.floor, r.zone) for r in zone_summary.itertuples()}
     slope = {(r.floor, r.zone): r for r in slopes.itertuples()}
     inspect = {(r.floor, r.zone): r.reason for r in inspection.itertuples()}
@@ -68,10 +108,7 @@ def _zone_registry(zone_summary, slopes, inspection, baseline) -> list[dict]:
                 "kw_per_c_source": None if s is None else s.source,
                 "pct_per_c": None if s is None else round(float(s.saving_pct_per_c), 2),
                 "moisture_per_c": None if s is None else round(float(s.moisture_g_per_kg_per_c), 3),
-                "baseline": None if b is None else {
-                    "model": b.chosen_model, "cv_rmse_pct": float(b.cv_rmse_pct),
-                    "nmbe_pct": float(b.nmbe_pct), "r2": float(b.r2),
-                    "passes": bool(b.passes_ashrae14)},
+                "baseline": None if b is None else _baseline_entry(b, compliance, "zone", floor, zone),
             })
     return out
 
@@ -326,17 +363,15 @@ def load() -> Store:
     slopes = pd.read_csv(qc.SETPOINT_DIR / "kw_per_degC.csv")
     monthly = pd.read_csv(qc.SETPOINT_DIR / "recommendations_monthly.csv")
     baseline = pd.read_csv(qc.BASELINE_DIR / "summary_metrics.csv")
-    preds = pd.concat(
-        pd.read_csv(qc.BASELINE_DIR / f"floor{f}" / "predictions_occupied_hours.csv",
-                    parse_dates=["timestamp"],
-                    usecols=["timestamp", "zone", "split", "ac_kw", "pred_chosen"]).assign(floor=f)
-        for f in qc.FLOORS if (qc.BASELINE_DIR / f"floor{f}" / "predictions_occupied_hours.csv").exists())
+    compliance = _compliance()
 
     days = pmv.groupby(pmv["timestamp"].dt.date)["zone"].count()
     office_days = [d.isoformat() for d, n in days.items() if n >= 200]   # most zones reporting
     return Store(
-        pmv=pmv, heatmap=heatmap, inspection=inspection, slopes=slopes, monthly=monthly, preds=preds,
-        registry=_zone_registry(zone_summary, slopes, inspection, baseline),
+        pmv=pmv, heatmap=heatmap, inspection=inspection, slopes=slopes, monthly=monthly,
+        preds=_read_preds(qc.BASELINE_DIR), floor_preds=_read_preds(qc.BASELINE_DIR / "by_floor"),
+        floor_baselines=_floor_baselines(compliance),
+        registry=_zone_registry(zone_summary, slopes, inspection, baseline, compliance),
         energy_audit=_energy_audit(),
         afterhours_timing=_afterhours_timing(),
         months=sorted(pmv["month"].unique()), office_days=office_days)

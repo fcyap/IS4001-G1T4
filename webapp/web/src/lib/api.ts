@@ -1,5 +1,14 @@
 // Types and fetchers for the FastAPI backend (webapp/api/main.py).
 
+/** ASHRAE Guideline 14 results of a zone or floor baseline on the Jul–Dec 2019 test period.
+ *  fit_passes: whether its fit on the baseline period (Jul 2018–Jun 2019) passes, hourly and monthly. */
+export interface BaselineFit {
+  model: string; cv_rmse_pct: number; nmbe_pct: number; r2: number; passes: boolean;
+  monthly_cv_rmse_pct: number; monthly_nmbe_pct: number; passes_monthly: boolean;
+  fit_passes: boolean | null;
+}
+export interface FloorBaseline extends BaselineFit { floor: number }
+
 export interface ZoneInfo {
   id: string; floor: number; zone: string;
   status: "data" | "nodata"; note: string | null;
@@ -7,7 +16,7 @@ export interface ZoneInfo {
   inspect: string | null;
   kw_per_c: number | null; kw_per_c_source: string | null; pct_per_c: number | null;
   moisture_per_c: number | null;
-  baseline: { model: string; cv_rmse_pct: number; nmbe_pct: number; r2: number; passes: boolean } | null;
+  baseline: BaselineFit | null;
 }
 
 export type AuditClassification = "Preventable Waste" | "Critical Standby" | "Mixed";
@@ -60,6 +69,7 @@ export interface MonthlyRec {
 export interface Meta {
   floors: number[];
   zones: ZoneInfo[];
+  floor_baselines?: FloorBaseline[];
   energy_audit: EnergyAuditZone[];
   afterhours_timing: Record<string, { cutoff_hour: number; start_hour?: number; end_hour?: number; annual_kwh: number; annual_cost_thb: number;
     annual_load_kw: number; annual_projected_load_kw: number; annual_preventable_load_kw: number;
@@ -106,6 +116,9 @@ export interface Replay {
 
 export interface LoadPattern {
   weeks: string[]; actual: number[]; baseline: number[]; test_start: string;
+  /** zone: the zone's own baseline; floor: the floor baseline; building: sum of floor baselines;
+   *  zones: sum of zone baselines (floor baselines not built). */
+  level?: "zone" | "floor" | "building" | "zones";
   test_actual_kwh?: number; test_baseline_kwh?: number;
 }
 

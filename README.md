@@ -116,6 +116,12 @@ powershell -ExecutionPolicy Bypass -File webapp\run_dev.ps1   # Windows
 ## Where the numbers come from
 
 The API (`webapp/api`) reads Question A's circuit classification from `data/qn1_circuit_waste_and_classification.csv` and calculates monthly after-hours energy from `data/qn1_hourly_master_for_excel.csv`. Each row is one hour of mean kW; preventable energy is the sum of positive after-hours load above the circuit baseline, and cost applies the peak/off-peak tariff schedule plus `data/thai_holidays_18months.csv` (excluding VAT). The annual view sums the clean notebook training period, July 2018–June 2019, from those same hourly readings so its totals add up to the twelve displayed months. Missing meter readings remain unavailable, and partial months expose their coverage. The notebook's exported 18-month-normalized annual CSV values are not used for the web app's annual rollup because they do not add up to the month-specific series. The API also reads the CSVs the Question B notebooks write to `data/qns2/` and does not refit those source analyses.
+
+The AC baseline (`qb_baseline_model`) is built at two levels:
+- **Zone baselines** (`baseline/floor<N>/`) are for diagnosis. Several zones drift after mid-2019, with AC load moving between zones on the same floor.
+- **Floor baselines** (`baseline/by_floor/floor<N>/`, whole-floor AC) are the ones to verify savings against, because that load shifting cancels in the floor total.
+
+`baseline/ashrae14_compliance.csv` holds the ASHRAE Guideline 14 checks (hourly and monthly) for both levels, on the baseline period and the Jul–Dec 2019 test. The side panel's baseline badges and alerts, and the "AC Energy Against the Baseline" chart, read these. The chart uses the floor baseline for a floor and the sum of floor baselines for the building. The setpoint savings themselves come from the kW-per-°C slopes, not from the baseline.
 Run the notebooks first: `cubems_prepare` → `qb_baseline_model` → `qb_comfort_pmv` → `qb_energy_per_degree` →
 `qb_setpoint_sim`.
 

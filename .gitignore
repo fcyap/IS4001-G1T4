@@ -15,9 +15,16 @@ data/qns2/*
 !data/qns2/baseline/
 data/qns2/baseline/*
 !data/qns2/baseline/summary_metrics.csv
+!data/qns2/baseline/floor_summary_metrics.csv
+!data/qns2/baseline/ashrae14_compliance.csv
 !data/qns2/baseline/floor*/
 data/qns2/baseline/floor*/*
 !data/qns2/baseline/floor*/predictions_occupied_hours.csv
+!data/qns2/baseline/by_floor/
+data/qns2/baseline/by_floor/*
+!data/qns2/baseline/by_floor/floor*/
+data/qns2/baseline/by_floor/floor*/*
+!data/qns2/baseline/by_floor/floor*/predictions_occupied_hours.csv
 !data/qn1_hourly_master_for_excel.csv
 !data/qn1_circuit_waste_and_classification.csv
 !data/qn1_dynamic_baseload_matrix.csv
