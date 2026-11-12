@@ -28,6 +28,8 @@ interface State {
   view: "3d" | "plan";
   hover: string | null;
   whatif: { mode: "global" | "rule"; globalC: number; overrides: Record<string, number> };
+  /** Setpoint what-if: the map shows the zones after the change (true) or as recorded (false). */
+  whatifShowAfter: boolean;
   replay: { date: string | null; t: number; playing: boolean; speed: number; after: boolean };
   fading: boolean;                  // the current view is fading out before a question change
   entering: boolean;                // a question has mounted but the layout still shows the landing page
@@ -57,6 +59,7 @@ interface State {
   setView: (v: "3d" | "plan") => void;
   setHover: (id: string | null) => void;
   setWhatif: (p: Partial<State["whatif"]>) => void;
+  setWhatifShowAfter: (v: boolean) => void;
   setOverride: (id: string, c: number | null) => void;
   setReplay: (p: Partial<State["replay"]>) => void;
 }
@@ -68,7 +71,8 @@ const initialScope: Scope = q.get("floor") ? { floor: +q.get("floor")!, zone: q.
 const initialMode = (["overview", "whatif", "replay"].includes(q.get("mode") ?? "") ? q.get("mode") : "overview") as Mode;
 const initialTopic: Topic = ["home", "afterhours", "comfort"].includes(q.get("topic") ?? "") ? q.get("topic") as Topic
   : ["mode", "floor", "view"].some((k) => q.has(k)) ? "comfort" : "home";
-const comfortMeasure = (mode: Mode): Measure => mode === "replay" ? "pmv" : mode === "whatif" ? "saved" : "too_cool";
+// What-if opens on comfort: the map visibly changes when flipped between current and after.
+const comfortMeasure = (mode: Mode): Measure => mode === "replay" ? "pmv" : mode === "whatif" ? "comfortable" : "too_cool";
 
 /** The modes each question offers: after-hours waste has no day replay. */
 export const MODES_BY_TOPIC: Record<Topic, Mode[]> = {
@@ -99,6 +103,7 @@ export const useStore = create<State>((set, get) => ({
   view: q.get("view") === "plan" ? "plan" : "3d",
   hover: null,
   whatif: { mode: "rule", globalC: 1, overrides: {} },
+  whatifShowAfter: true,
   replay: { date: null, t: 0, playing: false, speed: 4, after: false },
   fading: false,
   entering: false,
@@ -141,8 +146,9 @@ export const useStore = create<State>((set, get) => ({
     mode,
     measure: s.topic === "afterhours" ? "audit_load"
       : mode === "replay" ? (s.measure === "ac" ? "ac" : "pmv")
-      : mode === "whatif" ? "saved"
+      : mode === "whatif" ? "comfortable"
       : s.measure === "saved" ? "too_cool" : s.measure,
+    whatifShowAfter: mode === "whatif" ? true : s.whatifShowAfter,
     replay: { ...s.replay, playing: false },
   })),
   setMonth: (month) => set({ month }),
@@ -208,6 +214,7 @@ export const useStore = create<State>((set, get) => ({
   setView: (view) => set({ view }),
   setHover: (hover) => set({ hover }),
   setWhatif: (p) => set((s) => ({ whatif: { ...s.whatif, ...p } })),
+  setWhatifShowAfter: (whatifShowAfter) => set({ whatifShowAfter }),
   setOverride: (id, c) => set((s) => {
     const overrides = { ...s.whatif.overrides };
     if (c === null) delete overrides[id]; else overrides[id] = c;

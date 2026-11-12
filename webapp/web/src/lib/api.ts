@@ -95,6 +95,10 @@ export interface Summary {
 export interface ZoneResult {
   id: string; raise_c: number; raise_max: number; raise_min: number;
   mean_out_temp_c: number; before: Summary; after: Summary; breach: string[]; breach_months: string[];
+  /** Every sensor month, whatever month is picked: [before, after] % of office time. */
+  monthly?: Record<string, { too_cool: [number, number]; comfortable: [number, number]; humid: [number, number] }>;
+  /** AC kWh saved per week (week ending Sunday, as in LoadPattern.weeks); negative = extra AC. */
+  weekly_saved_kwh?: Record<string, number>;
 }
 
 export interface WhatIfResult {

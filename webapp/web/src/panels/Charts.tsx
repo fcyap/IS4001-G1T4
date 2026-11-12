@@ -15,14 +15,14 @@ const tooltip = {
 };
 const base = { aria: { enabled: true }, backgroundColor: "transparent", textStyle: { fontFamily: "Plus Jakarta Sans Variable, Segoe UI, sans-serif" }, animationDuration: 400 };
 
-export function LoadChart({ data, height = 190 }: { data: LoadPattern; height?: number }) {
+export function LoadChart({ data, after, height = 190 }: { data: LoadPattern; after?: (number | null)[] | null; height?: number }) {
   const option = useMemo(() => {
     const testIdx = data.weeks.findIndex((w) => w >= data.test_start);
     return {
       ...base,
       grid: { left: 44, right: 22, top: 26, bottom: 22 },
       legend: { top: 0, right: 0, itemWidth: 14, itemHeight: 2, textStyle: { color: C.muted, fontSize: 11 },
-        data: ["Actual", "Baseline Model"] },
+        data: after ? ["Actual", "With Setpoint Change", "Baseline Model"] : ["Actual", "Baseline Model"] },
       tooltip: { ...tooltip, trigger: "axis", valueFormatter: (v: number) => `${Math.round(v).toLocaleString()} kWh` },
       xAxis: { type: "category", data: data.weeks, ...axis, splitLine: { show: false },
         axisLabel: { ...axis.axisLabel, formatter: (w: string) => monthLabel(w.slice(0, 7)), interval: 12 } },
@@ -33,10 +33,11 @@ export function LoadChart({ data, height = 190 }: { data: LoadPattern; height?: 
           markArea: testIdx >= 0 ? { silent: true, itemStyle: { color: "rgba(95,168,232,0.08)" },
             label: { color: C.muted, fontSize: 10, position: "insideTopLeft" },
             data: [[{ name: "Test Period", xAxis: data.weeks[testIdx] }, { xAxis: data.weeks[data.weeks.length - 1] }]] } : undefined },
+        ...(after ? [{ name: "With Setpoint Change", type: "line", data: after, symbol: "none", lineStyle: { width: 1.5, color: C.comfy } }] : []),
         { name: "Baseline Model", type: "line", data: data.baseline, symbol: "none", lineStyle: { width: 1.5, color: C.cool, type: [4, 3] } },
       ],
     };
-  }, [data]);
+  }, [data, after]);
   return <ReactECharts option={option} style={{ height }} notMerge />;
 }
 
@@ -164,7 +165,7 @@ const HEAT_RAMP: Record<HeatKey, string[]> = {
 };
 
 export function HeatMap({ cells, months, measure, onPick }: {
-  cells: HeatCell[]; months: string[]; measure: HeatKey; onPick?: (floor: number, zone: string) => void;
+  cells: Pick<HeatCell, "floor" | "zone" | "month" | HeatKey>[]; months: string[]; measure: HeatKey; onPick?: (floor: number, zone: string) => void;
 }) {
   const rows = useMemo(() => [...new Set(cells.map((c) => `F${c.floor} z${c.zone.slice(1)}`))]
     .sort((a, b) => b.localeCompare(a, undefined, { numeric: true })), [cells]);

@@ -81,7 +81,7 @@ export function zoneValue(z: ZoneResult | undefined, measure: Measure, after: bo
     case "comfortable": return s.pct_comfortable;
     case "pmv": return s.mean_pmv;
     case "ac": return acKw(z.before, after);
-    case "saved": return z.after.saved_kwh;
+    case "saved": return after ? z.after.saved_kwh : 0;      // nothing is saved before the change
   }
 }
 

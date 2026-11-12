@@ -8,7 +8,6 @@ import { zoneLabel, zoneUse } from "../lib/zones";
 import { HeatMap, Histogram, LoadChart, Sparkline } from "./Charts";
 import { Section, Stat } from "./PanelPrimitives";
 import Overview from "./Overview";
-import Plan from "./Plan";
 import QuestionAPanel from "./QuestionAPanel";
 
 // --- Baselines (ASHRAE Guideline 14) ----------------------------------------------------------
@@ -199,23 +198,12 @@ function EnergySection({ results }: { results: ZoneResult[] }) {
   if (!results.length) return null;
 
   // Cooling EUI (office-hours AC per m²) for building or floor level only
-  const BUILDING_AREA_M2 = 11700;
   const FLOOR_AREA_M2 = BUILDING_AREA_M2 / 7;
   const periodsPerYear = meta?.rules.office_periods_per_year ?? 7776;
   const showEUI = !scope.zone; // Show EUI for whole building or single floor, not for zones
-
-  let euiBefore: number | null = null;
-  let euiAfter: number | null = null;
-
-  if (showEUI && a.periods > 0) {
-    const area = scope.floor === undefined ? BUILDING_AREA_M2 : FLOOR_AREA_M2;
-    // Annualise each zone on its own periods, then sum: zones' periods overlap in time,
-    // so dividing the pooled kWh by the pooled periods would give one average zone, not the building.
-    const annualKwh = (after: boolean) => results.reduce((n, z) => z.before.periods
-      ? n + ((after ? z.before.ac_kwh - z.after.saved_kwh : z.before.ac_kwh) / z.before.periods) * periodsPerYear : n, 0);
-    euiBefore = annualKwh(false) / area;
-    euiAfter = annualKwh(true) / area;
-  }
+  const eui = showEUI ? coolingEui(results, scope.floor, periodsPerYear) : null;
+  const euiBefore = eui?.before ?? null;
+  const euiAfter = eui?.after ?? null;
 
   return (
     <Section title="Energy" collapsible={true} defaultOpen={false}>
@@ -303,6 +291,8 @@ function WhatIf({ results, zones }: { results: ZoneResult[]; zones: ZoneInfo[] }
   const month = useStore((s) => s.month);
   const b = rollup(results, true);
   const breaches = results.filter((z) => z.breach.length);
+  const select = useStore((s) => s.select);
+  const a = rollup(results, false);
   const zone = scope.zone ? zones[0] : null;
   const zr = zone ? results[0] : null;
   const override = zone ? whatif.overrides[zone.id] : undefined;
@@ -310,54 +300,215 @@ function WhatIf({ results, zones }: { results: ZoneResult[]; zones: ZoneInfo[] }
   const rules = meta?.rules;
   const limit = rules?.whatif_limit_c ?? 5;
   const reliable = rules?.reliable_change_c ?? 3;
-  const extra = b.saved_kwh < 0;          // a lower setpoint costs AC energy instead of saving it
+  const warmLimit = (rules?.too_warm_tolerance ?? 0.1) * 100;
+  const rule = whatif.mode === "rule";
+  // A picked month shows that month; otherwise the sensor months scaled to a year, as in the deck.
+  const saved = month ? b.saved_kwh : b.annual_kwh_saved;
+  const extra = saved < 0;                // a lower setpoint costs AC energy instead of saving it
+  const pctSaved = a.ac_kwh ? (Math.abs(b.saved_kwh) / a.ac_kwh) * 100 : 0;
+  const held = zones.filter((z) => z.inspect && z.simulated && whatif.overrides[z.id] === undefined);
+  const extrapolated = !rule && (Math.abs(whatif.globalC) > reliable || Object.values(whatif.overrides).some((c) => Math.abs(c) > reliable));
+
+  // [label, today, after, unit, lower is better, guarded: a rise only counts as bad if a zone breaks its limit]
+  // The 10 % too-warm limit applies per raised zone and month, not to this pooled share.
+  const rows: [string, number, number, string, boolean, boolean?][] = [
+    ["Comfortable", a.pct_comfortable, b.pct_comfortable, "%", false],
+    ["Too cool", a.pct_too_cool, b.pct_too_cool, "%", true],
+    ["Too warm", a.pct_too_warm, b.pct_too_warm, "%", true, true],
+    ["Humid (RH > 65 %)", a.pct_humid, b.pct_humid, "%", true, true],
+    ["Mean zone temperature", a.mean_temp_c, b.mean_temp_c, "°C", false],
+  ];
 
   return (
-    <Section title="Setpoint What-If" collapsible={true} defaultOpen={true} aside={nOverrides ? <button className="link" onClick={() => setWhatif({ overrides: {} })}>Clear {nOverrides} Zone Override{nOverrides > 1 ? "s" : ""}</button> : null}>
+    <Section title="Setpoint What-If" aside={nOverrides ? <button className="link" onClick={() => setWhatif({ overrides: {} })}>Clear {nOverrides} Zone Override{nOverrides > 1 ? "s" : ""}</button> : null}>
       <div className="segmented wide" role="group" aria-label="Setpoint scenario">
-        <button type="button" className={whatif.mode === "rule" ? "on" : ""} aria-pressed={whatif.mode === "rule"} onClick={() => setWhatif({ mode: "rule" })}>Rule Recommendation</button>
-        <button type="button" className={whatif.mode === "global" ? "on" : ""} aria-pressed={whatif.mode === "global"} onClick={() => setWhatif({ mode: "global" })}>Same Change Everywhere</button>
+        <button type="button" className={rule ? "on" : ""} aria-pressed={rule} onClick={() => setWhatif({ mode: "rule" })}>Recommended Rule</button>
+        <button type="button" className={!rule ? "on" : ""} aria-pressed={!rule} onClick={() => setWhatif({ mode: "global" })}>Manual</button>
       </div>
-      {whatif.mode === "global" ? (
+      {rule ? (
+        <p className="note">
+          Each zone, each month: raise {rules?.raise_step_c ?? 1} °C at a time while over {n0((rules?.raise_if_too_cool ?? 0.25) * 100)} % of office time is too cool,
+          and roll back before too-warm time passes {n0(warmLimit)} % or humid time rises.
+        </p>
+      ) : (
         <label className="slider">
-          <span>Change Every Zone’s Setpoint by <b>{signedC(whatif.globalC)}</b></span>
+          <span>Change every zone’s setpoint by <b>{signedC(whatif.globalC)}</b></span>
           <input type="range" min={-limit} max={limit} step={0.5} value={whatif.globalC} onChange={(e) => setWhatif({ globalC: +e.target.value })} />
         </label>
-      ) : (
-        <p className="note">
-          Per zone and month: {rules?.raise_step_c ?? 1} °C steps up while over {n0((rules?.raise_if_too_cool ?? 0.25) * 100)} % of office time is too cool, to +{rules?.max_raise_c ?? 5} °C, or down while over {n0((rules?.lower_if_too_warm ?? 0.25) * 100)} % is too warm, to -{rules?.max_lower_c ?? 5} °C.
-          Stops before over {n0((rules?.too_warm_tolerance ?? 0.1) * 100)} % overshoots the comfort band or humid time rises.
-        </p>
       )}
 
       {zone && zone.simulated && (
         <label className="slider override">
-          <span>This Zone: <b>{override !== undefined ? `${signedC(override)} (override)` : zr ? `${signedC(zr.raise_c)} from the ${whatif.mode === "rule" ? "rule" : "building setting"}` : "–"}</b></span>
+          <span>This zone: <b>{override !== undefined ? `${signedC(override)} (your setting)` : zr ? `${signedC(zr.raise_c)}${rule ? " average from the rule" : ""}` : "–"}</b></span>
           <input type="range" min={-limit} max={limit} step={0.5} value={override ?? zr?.raise_c ?? 0}
             onChange={(e) => setOverride(zone.id, +e.target.value)} />
-          {override !== undefined && <button className="link" onClick={() => setOverride(zone.id, null)}>Use the {whatif.mode === "rule" ? "Rule" : "Building Setting"} Again</button>}
+          {override !== undefined && <button className="link" onClick={() => setOverride(zone.id, null)}>Use the {rule ? "rule" : "building setting"} again</button>}
         </label>
       )}
-      {zone && !zone.simulated && zone.status === "data" && <p className="note">No AC meter here, so nothing to simulate.</p>}
+      {zone && !zone.simulated && zone.status === "data" && <p className="note">No AC meter here, so there is nothing to simulate.</p>}
 
-      <div className="result">
-        <div>
-          <span className="stat-label">{extra ? "Extra AC Energy" : "AC Energy Saved"}, {month ? monthLabel(month) : "Sensor Months"}</span>
-          <span className={`big ${extra ? "bad" : ""}`}>{kwh(Math.abs(b.saved_kwh))}</span>
-          <span className="sub">{n1(b.ac_kwh ? (Math.abs(b.saved_kwh) / b.ac_kwh) * 100 : 0)} % {extra ? "more" : "of"} this AC, about {kwh(Math.abs(b.annual_kwh_saved ?? 0))} a year</span>
+      {results.length > 0 && <>
+        <div className="wi-hero">
+          <span className="stat-label">{extra ? "Extra AC energy" : "AC energy saved"} {month ? `in ${monthLabel(month)}` : "per year"}</span>
+          <span className={`big ${extra ? "bad" : ""}`}>{kwh(Math.abs(saved))}</span>
+          <span className="sub">{n1(pctSaved)} % {extra ? "more" : "less"} office-hour AC</span>
         </div>
-        <div>
-          <span className="stat-label">Over the Guardrail</span>
-          <span className={`big ${breaches.length ? "bad" : ""}`}>{breaches.length}</span>
-          <span className="sub">{breaches.length ? breaches.map((z) => z.id.replace(":", " ")).join(", ") : "No zone too warm, humid or too cool"}</span>
+
+        <table className="tbl ba">
+          <thead><tr><th>Office time</th><th>Today</th><th>After</th><th>Change</th></tr></thead>
+          <tbody>
+            {rows.map(([label, before, after, unit, lowerBetter, guarded]) => {
+              const d = after - before;
+              const pct = unit === "%";
+              const worse = (d < 0) !== lowerBetter;
+              const tone = Math.abs(d) < (pct ? 0.5 : 0.05) || (worse && guarded && !breaches.length) ? ""
+                : worse ? "bad" : "good";
+              const fmt = (v: number) => pct ? `${n0(v)} %` : `${n1(v)} °C`;
+              return (
+                <tr key={label}>
+                  <td>{label}</td>
+                  <td>{fmt(before)}</td>
+                  <td><b>{fmt(after)}</b></td>
+                  <td className={unit === "°C" ? "" : tone}>{`${d > 0 ? "+" : d < 0 ? "−" : ""}${pct ? n0(Math.abs(d)) + " pts" : n1(Math.abs(d)) + " °C"}`}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        <div className="wi-bars">
+          <ComfortBar s={a} label="Today" />
+          <ComfortBar s={b} label="After" />
+          <div className="mix-key">
+            <span><i style={{ background: C.cool }} />Too cool</span>
+            <span><i style={{ background: C.comfy }} />Comfortable</span>
+            <span><i style={{ background: C.warm }} />Too warm</span>
+          </div>
         </div>
-      </div>
-      {whatif.mode === "rule" || Math.abs(whatif.globalC) > reliable || Object.values(whatif.overrides).some((c) => Math.abs(c) > reliable)
-        ? <p className="note">Beyond ±{reliable} °C these figures are extrapolated. Treat them as rough.</p>
-        : null}
-      {!scope.zone && <p className="note">Check-first zones keep today’s setpoint unless overridden. Annual figures assume {n0(meta?.rules.office_periods_per_year ? meta.rules.office_periods_per_year / 4 : 1944)} office hours.</p>}
+
+        <p className={`wi-guard ${breaches.length ? "bad" : "ok"}`}>
+          {breaches.length ? <>
+            {zone ? "This zone" : `${breaches.length} zone${breaches.length > 1 ? "s" : ""}`} would break the comfort limit{zone ? ` (${breaches[0].breach.join(", ")}) in ${breaches[0].breach_months.map(monthLabel).join(", ")}.` : ": "}
+            {!zone && breaches.slice(0, BREACHES_SHOWN).map((z, i) => {
+              const [f, zn] = z.id.slice(1).split(":");
+              return <span key={z.id}>{i > 0 && ", "}<button type="button" className="link" onClick={() => select({ floor: +f, zone: zn })}
+                title={`Goes ${z.breach.join(" and ")} in ${z.breach_months.map(monthLabel).join(", ")}`}>F{f} {zn}</button> ({z.breach.join(", ")})</span>;
+            })}
+            {!zone && breaches.length > BREACHES_SHOWN && ` and ${breaches.length - BREACHES_SHOWN} more`}
+          </> : `${zone ? "This zone stays" : "Every zone stays"} within the limits: at most ${n0(warmLimit)} % too warm each month, and no more humid than today.`}
+        </p>
+        {!zone && held.length > 0 && (
+          <p className="note">Held at today’s setpoint for an on-site check: {held.map((z) => `F${z.floor} ${z.zone}`).join(", ")}.</p>
+        )}
+        {extrapolated && <p className="note">Beyond ±{reliable} °C the figures are extrapolated. Treat them as rough.</p>}
+      </>}
     </Section>
   );
+}
+
+const BREACHES_SHOWN = 4;
+
+/** Which floors (whole building) or zones (one floor) the saving comes from, largest first. */
+function SavingSources({ results, zones }: { results: ZoneResult[]; zones: ZoneInfo[] }) {
+  const { meta } = useData();
+  const scope = useStore((s) => s.scope);
+  const month = useStore((s) => s.month);
+  const select = useStore((s) => s.select);
+  const whatif = useStore((s) => s.whatif);
+  if (scope.zone || !results.length) return null;
+  const byFloor = scope.floor === undefined;
+  const info = new Map(zones.map((z) => [z.id, z]));
+
+  /** Why a zone gets no change at all, so a 0 kWh row explains itself (null when it does change). */
+  const heldReason = (r: ZoneResult): string | null => {
+    if (r.raise_max !== 0 || r.raise_min !== 0) return null;
+    const z = info.get(r.id);
+    if (z && !z.simulated) return "No AC meter here, so nothing to change";
+    if (z?.inspect && whatif.overrides[r.id] === undefined) return "Held for an on-site check before any change";
+    if (whatif.mode !== "rule") return "No change set";
+    // The rule's own reasons for this zone's months; a guardrail stop says more than "comfortable enough".
+    const [f, zn] = r.id.slice(1).split(":");
+    const reasons = (meta?.monthly ?? []).filter((m) => m.floor === +f && m.zone === zn && (!month || m.month === month))
+      .map((m) => m.reason);
+    const count = (k: string) => reasons.filter((x) => x.includes(k)).length;
+    if (count("humid") && count("humid") >= count("too warm"))
+      return "Held: raising would make it too humid. Needs a dehumidification check";
+    if (count("too warm")) return "Held: raising would make it too warm";
+    return "Already comfortable, no change needed";
+  };
+  const saved = (r: ZoneResult) => (month ? r.after.saved_kwh : r.after.annual_kwh_saved ?? 0);
+  const groups = byFloor
+    ? [...new Set(results.map((r) => +r.id.slice(1).split(":")[0]))].map((f) => ({
+      key: `F${f}`, label: `Floor ${f}`, rs: results.filter((r) => r.id.startsWith(`F${f}:`)), zone: null as string | null }))
+    : results.map((r) => ({ key: r.id, label: zoneName(r.id.split(":")[1]), rs: [r], zone: r.id.split(":")[1] }));
+  const rows = groups.map((g) => {
+    const a = rollup(g.rs, false), b = rollup(g.rs, true);
+    const n = g.rs.reduce((x, r) => x + r.before.periods, 0);
+    const raise = n ? g.rs.reduce((x, r) => x + r.raise_c * r.before.periods, 0) / n : 0;
+    return { ...g, kwh: g.rs.reduce((x, r) => x + saved(r), 0), raise, comfA: a.pct_comfortable, comfB: b.pct_comfortable,
+      held: g.zone ? heldReason(g.rs[0]) : null };
+  }).sort((x, y) => y.kwh - x.kwh);
+  const total = rows.reduce((x, r) => x + Math.max(0, r.kwh), 0);
+  const max = Math.max(...rows.map((r) => Math.abs(r.kwh)), 1e-9);
+  const energy = (v: number) => (max >= 10000 ? `${(v / 1000).toFixed(1)} MWh` : kwh(v));   // one unit down the list
+  return (
+    <Section title="Where the Saving Comes From" aside={<span className="aside">{month ? monthLabel(month) : "Per Year"}</span>}>
+      <ol className="rank">
+        {rows.map((r) => {
+          const use = r.zone ? zoneUse(scope.floor!, r.zone) : null;
+          const body = <>
+            <span className="rank-name"><b>{r.label}</b>
+              {use && <small>{use.name}</small>}
+              {r.held
+                ? <small className="rank-held">{r.held}</small>
+                : <small className="rank-detail">{signedC(r.raise)}{month ? "" : " avg"} · comfortable {n0(r.comfA)} → {n0(r.comfB)} %</small>}</span>
+            <span className="rank-bar"><i style={{ width: `${(Math.abs(r.kwh) / max) * 100}%`, background: r.kwh < 0 ? "var(--alert)" : "var(--comfy)" }} /></span>
+            <span className="rank-val"><b>{energy(r.kwh)}</b><small>{total > 0 && r.kwh > 0 ? `${n0((r.kwh / total) * 100)} % of total` : ""}</small></span>
+          </>;
+          // Floors are changed with the floor picker only; zones on the open floor can be opened from here.
+          return <li key={r.key}>{r.zone
+            ? <button type="button" className="rank-row" onClick={() => select({ floor: scope.floor, zone: r.zone! })}>{body}</button>
+            : <div className="rank-row">{body}</div>}</li>;
+        })}
+      </ol>
+    </Section>
+  );
+}
+
+/** The detailed measures, each shown before and after the simulated change. */
+function WhatIfDetail({ results, zones, zone }: { results: ZoneResult[]; zones: ZoneInfo[]; zone: ZoneInfo | null }) {
+  const { meta } = useData();
+  const scope = useStore((s) => s.scope);
+  const eui = coolingEui(results, scope.floor, meta?.rules.office_periods_per_year ?? 7776);
+  if (!results.length) return null;
+  return (
+    <Section title="After the Change, in Detail" collapsible defaultOpen={false}>
+      {!zone && eui && (
+        <div className="stats">
+          <Stat label="Cooling EUI (Office Hours)" value={n1(eui.before)} after={n1(eui.after)} unit="kWh/m²/year"
+            hint={`Office-hours AC per year, per m² of ${scope.floor === undefined ? "the building (11,700 m²)" : `Floor ${scope.floor}`}`}
+            change={eui.before ? { value: ((eui.after - eui.before) / eui.before) * 100, type: "pct", isImprovement: eui.after < eui.before } : null} />
+          <Stat label="Mean PMV" value={pmvTxt(rollup(results, false).mean_pmv)} after={pmvTxt(rollup(results, true).mean_pmv)}
+            hint="Comfortable is −0.5 to +0.5" />
+        </div>
+      )}
+      <Load results={results} />
+      <Heat zones={zones} results={results} />
+      {zone && zone.status === "data" && <ZoneDetailSection zone={zone} result={results[0]} />}
+    </Section>
+  );
+}
+
+const BUILDING_AREA_M2 = 11700;
+/** Office-hours cooling EUI (kWh/m²/year) before and after, for the building or one floor. */
+function coolingEui(results: ZoneResult[], floor: number | undefined, periodsPerYear: number) {
+  if (!results.some((z) => z.before.periods)) return null;
+  const area = floor === undefined ? BUILDING_AREA_M2 : BUILDING_AREA_M2 / 7;
+  // Annualise each zone on its own periods, then sum: zones' periods overlap in time,
+  // so dividing the pooled kWh by the pooled periods would give one average zone, not the building.
+  const annual = (after: boolean) => results.reduce((n, z) => z.before.periods
+    ? n + ((after ? z.before.ac_kwh - z.after.saved_kwh : z.before.ac_kwh) / z.before.periods) * periodsPerYear : n, 0);
+  return { before: annual(false) / area, after: annual(true) / area };
 }
 
 // --- Replay -----------------------------------------------------------------------------------
@@ -544,16 +695,26 @@ const LOAD_NOTE: Record<NonNullable<LoadPattern["level"]>, string> = {
   zones: "Sum of the zone baselines, from weather, lighting and plug use, hour, weekday and holidays, trained Jul 2018–Jun 2019.",
 };
 
-function Load() {
+/** With `results` (what-if), also draws actual AC minus the simulated saving, in the weeks that have sensors. */
+function Load({ results }: { results?: ZoneResult[] }) {
   const scope = useStore((s) => s.scope);
   const { data } = useFetch(`load|${scope.floor}|${scope.zone}`, (sig) => api.load(scope.floor, scope.zone, sig), 0);
+  const after = useMemo(() => {
+    if (!data || !results) return null;
+    const saved = new Map<string, number>();
+    for (const r of results)
+      for (const [w, v] of Object.entries(r.weekly_saved_kwh ?? {})) saved.set(w, (saved.get(w) ?? 0) + v);
+    if (!saved.size) return null;
+    return data.weeks.map((w, i) => (saved.has(w) ? Math.max(0, data.actual[i] - saved.get(w)!) : null));
+  }, [data, results]);
   return (
     <Section title="AC Energy Against the Baseline" aside={<span className="aside">Weekly, Office Hours</span>}>
       {!data ? <div className="chart-ph" /> : data.weeks.length === 0
         ? <p className="empty">No baseline model for this selection (it needs metered AC with enough history).</p>
         : <>
-          <LoadChart data={data} />
+          <LoadChart data={data} after={after} />
           <p className="note">
+            {after && "Green: actual AC minus the simulated saving, in weeks with zone sensors. "}
             {LOAD_NOTE[data.level ?? "zones"]}
             {data.test_actual_kwh !== undefined && ` Test period: ${kwh(data.test_actual_kwh)} actual, ${kwh(data.test_baseline_kwh)} predicted.`}
           </p>
@@ -562,12 +723,21 @@ function Load() {
   );
 }
 
-function Heat({ zones }: { zones: ZoneInfo[] }) {
+/** With `results` (what-if), the cells come from the simulation and can be flipped between today and after. */
+function Heat({ zones, results }: { zones: ZoneInfo[]; results?: ZoneResult[] }) {
   const { meta } = useData();
   const select = useStore((s) => s.select);
   const [key, setKey] = useState<"pct_too_cool" | "pct_comfortable" | "pct_humid">("pct_too_cool");
+  const [showAfter, setShowAfter] = useState(true);
   const ids = new Set(zones.map((z) => z.id));
-  const cells = (meta?.heatmap ?? []).filter((c) => ids.has(zoneId(c.floor, c.zone)));
+  const sim = results?.some((r) => r.monthly) ? results : null;
+  const cells = sim
+    ? sim.flatMap((r) => Object.entries(r.monthly ?? {}).map(([month, v]) => {
+      const [f, z] = r.id.slice(1).split(":");
+      const i = showAfter ? 1 : 0;
+      return { floor: +f, zone: z, month, pct_too_cool: v.too_cool[i], pct_comfortable: v.comfortable[i], pct_humid: v.humid[i] };
+    }))
+    : (meta?.heatmap ?? []).filter((c) => ids.has(zoneId(c.floor, c.zone)));
   if (!cells.length) return null;
   return (
     <Section title="Comfort by Zone and Month" aside={
@@ -576,6 +746,10 @@ function Heat({ zones }: { zones: ZoneInfo[] }) {
         <option value="pct_comfortable">% Comfortable</option>
         <option value="pct_humid">% Humid</option>
       </select>}>
+      {sim && <div className="segmented tiny" role="group" aria-label="Heat map scenario">
+        <button type="button" className={!showAfter ? "on" : ""} aria-pressed={!showAfter} onClick={() => setShowAfter(false)}>Today</button>
+        <button type="button" className={showAfter ? "on" : ""} aria-pressed={showAfter} onClick={() => setShowAfter(true)}>After</button>
+      </div>}
       <HeatMap cells={cells} months={meta!.months} measure={key} onPick={(f, z) => select({ floor: f, zone: z })} />
       <p className="note">No sensor data from mid-Sep 2018 to Feb 2019.</p>
     </Section>
@@ -658,27 +832,25 @@ export default function SidePanel() {
 
   // Building and floor views lead with a summary; the detail stays one click away.
   const summaryFirst = !zone && mode === "overview";
-  // What-if leads with the summary and the recommended plan; the simulation below starts from that plan.
-  const planFirst = !zone && mode === "whatif";
+  // Setpoint what-if: the change, its before/after, where the saving comes from, then the detail.
+  const setpointWhatIf = !auditLayer && mode === "whatif";
   const detail = <>
       {auditLayer ? <QuestionAPanel zones={zones} measure={measure as AuditMeasure} scope={scope} auditZone={auditZone}
         detailMeasure={auditDetailMeasure} showPlanner={mode === "whatif"} /> : <>
-        {mode === "replay" ? <ReplayReadout zones={zones} /> : <>
-          {/* Setpoint What-If at the top in what-if mode */}
-          {mode === "whatif" && <WhatIf results={results} zones={zones} />}
-
-          {/* Occupant Comfort Section */}
+        {mode === "replay" ? <ReplayReadout zones={zones} /> : setpointWhatIf ? <>
+          <WhatIf results={results} zones={zones} />
+          <SavingSources results={results} zones={zones} />
+          <WhatIfDetail results={results} zones={zones} zone={zone} />
+        </> : <>
           <OccupantComfortSection results={results} zones={zones} zone={zone} />
-
-          {/* Energy Section */}
           <EnergySection results={results} />
         </>}
       </>}
       {/* Zones and Alerts at the bottom */}
-      {!zone && (!auditLayer || mode !== "whatif") && (
+      {!zone && !setpointWhatIf && (!auditLayer || mode !== "whatif") && (
         <ZoneGrid zones={zones} onZoneSelect={setAuditDetailMeasure} />
       )}
-      {!auditLayer && <Alerts zones={zones} results={results} />}
+      {!auditLayer && !setpointWhatIf && <Alerts zones={zones} results={results} />}
   </>;
 
   return (
@@ -690,10 +862,6 @@ export default function SidePanel() {
         <Section title="Detailed Analysis" collapsible={true} defaultOpen={false} className="details">
           {detail}
         </Section>
-      </> : planFirst ? <>
-        {!auditLayer && <Overview zones={zones} />}
-        {detail}
-        {!auditLayer && <Plan zones={zones} />}
       </> : detail}
     </div>
   );

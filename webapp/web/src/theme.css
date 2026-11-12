@@ -196,6 +196,21 @@ input[type="range"] { accent-color: var(--warm); width: 100%; }
 .result .big.bad { color: var(--alert); }
 .result .sub { display: block; font-size: var(--t-xs); color: var(--muted); }
 
+/* Setpoint what-if: one headline saving, then today vs after */
+.wi-hero { margin-top: 16px; padding: 14px 16px; background: var(--panel-2); border-radius: var(--r-m); }
+.wi-hero .big { display: block; font-size: var(--t-xxl); font-weight: 600; letter-spacing: -0.02em; color: var(--comfy); line-height: 1.15; }
+.wi-hero .big.bad { color: var(--alert); }
+.wi-hero .sub { display: block; font-size: var(--t-xs); color: var(--muted); }
+.tbl.ba { margin-top: 14px; font-size: var(--t-s); }
+.tbl.ba th:not(:first-child), .tbl.ba td:not(:first-child) { text-align: right; }
+.tbl.ba td.good { color: var(--comfy); }
+.tbl.ba td.bad { color: color-mix(in srgb, var(--alert) 80%, white); }
+.wi-bars { margin-top: 14px; }
+.wi-guard { margin: 12px 0 0; font-size: var(--t-s); padding-left: 14px; position: relative; color: var(--ink-2); }
+.wi-guard::before { content: ""; position: absolute; left: 0; top: 0.5em; width: 7px; height: 7px; border-radius: 50%; background: var(--comfy); }
+.wi-guard.bad::before { background: var(--alert); }
+.sec .segmented.tiny { margin-bottom: 8px; }
+
 .spark { margin-top: 14px; display: flex; flex-direction: column; gap: 2px; }
 
 .grid { display: flex; flex-direction: column; gap: 6px; }
@@ -517,3 +532,11 @@ button.rank-row:hover { background: var(--panel-2); border-color: var(--line-2);
   .copilot-modal { left: 16px; right: 16px; bottom: 72px; width: auto; max-width: none; }
   .side-inner { padding-bottom: 80px; }
 }
+
+/* Setpoint what-if: the map's current / after switch, under "Colour Zones by" */
+.segmented.before-after { align-self: flex-start; background: rgba(19,34,58,0.82); backdrop-filter: blur(6px); }
+.segmented.before-after button { padding: 6px 14px; }
+
+/* "Where the Saving Comes From": the comfort change and held reasons wrap rather than truncate */
+.rank-name small.rank-detail, .rank-name small.rank-held { white-space: normal; overflow: visible; }
+.rank-name small.rank-held { color: var(--inspect); }

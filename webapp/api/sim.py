@@ -60,6 +60,8 @@ class Simulator:
         self.month = p["month"].to_numpy()
         self.date = p["timestamp"].dt.date.astype(str).to_numpy()
         self.time = p["timestamp"].dt.strftime("%H:%M").to_numpy()
+        # Week-ending Sunday, the same labels as /api/load's resample("W"), so savings line up with that chart.
+        self.week = p["timestamp"].dt.to_period("W-SUN").dt.end_time.dt.strftime("%Y-%m-%d").to_numpy()
         self.temp = p["temp_c"].to_numpy(float)
         self.rh = p["rh_pct"].to_numpy(float)
         self.ac = np.nan_to_num(p["ac_kw"].to_numpy(float), nan=0.0)
@@ -161,8 +163,24 @@ class Simulator:
                 "id": zid, "raise_c": round(float(d.mean()), 2), "raise_max": float(d.max()),
                 "raise_min": float(d.min()),
                 "mean_out_temp_c": round(float(np.nanmean(self.out_temp[m])), 2),
-                "before": before, "after": after, "breach": breach, "breach_months": breach_months})
+                "before": before, "after": after, "breach": breach, "breach_months": breach_months,
+                **self._timeline(a, b, self.zone_id == zid)})
         return {"zones": zones}
+
+    def _timeline(self, a: dict, b: dict, zm: np.ndarray) -> dict:
+        """Over every sensor month, whatever month is picked: comfort per month before and after
+        (for the heat map) and AC kWh saved per week (for the baseline chart)."""
+        df = pd.DataFrame({"m": self.month[zm],
+                           "cool_b": a["cool"][zm], "comf_b": a["comf"][zm], "humid_b": a["humid"][zm],
+                           "cool_a": b["cool"][zm], "comf_a": b["comf"][zm], "humid_a": b["humid"][zm]})
+        pct = (df.groupby("m").mean() * 100).round(1)
+        saved = pd.Series(b["saved"][zm] * qc.PERIOD_HOURS).groupby(self.week[zm]).sum()
+        return {
+            "monthly": {str(m): {"too_cool": [float(r.cool_b), float(r.cool_a)],
+                                 "comfortable": [float(r.comf_b), float(r.comf_a)],
+                                 "humid": [float(r.humid_b), float(r.humid_a)]} for m, r in pct.iterrows()},
+            "weekly_saved_kwh": {w: round(float(v), 1) for w, v in saved.items() if v != 0},
+        }
 
     def zone_detail(self, zid: str, sc: Scenario, months: list[str] | None) -> dict:
         a, b = self.before, self.after(sc)

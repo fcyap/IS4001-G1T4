@@ -126,4 +126,7 @@ if DIST.exists():
     @app.get("/{path:path}", include_in_schema=False)
     def spa(path: str):
         f = DIST / path
-        return FileResponse(f if path and f.is_file() else DIST / "index.html")
+        if path and f.is_file():
+            return FileResponse(f)
+        # index.html must be revalidated so a rebuild is picked up (the hashed assets can cache freely)
+        return FileResponse(DIST / "index.html", headers={"Cache-Control": "no-cache"})

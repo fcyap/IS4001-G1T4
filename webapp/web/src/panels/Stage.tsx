@@ -8,7 +8,7 @@ import { isAuditMeasure, monthLabel, useStore, type AuditMeasure, type MapMeasur
 const AFTERHOURS_PICKS: MapMeasure[] = ["audit_load", "audit_kwh", "audit_cost", "audit_classification"];
 const COMFORT_PICKS: Record<string, MapMeasure[]> = {
   overview: ["too_cool", "comfortable", "pmv", "ac"],
-  whatif: ["saved", "too_cool", "comfortable", "pmv", "ac"],
+  whatif: ["comfortable", "too_cool", "saved", "pmv", "ac"],
   replay: ["pmv", "ac"],
 };
 const REPLAY_LABEL: Partial<Record<Measure, string>> = { pmv: "PMV Now", ac: "AC Power Now" };
@@ -117,6 +117,20 @@ function Player() {
   );
 }
 
+/** Setpoint what-if: flip the map between the zones as recorded and with the rule or manual change applied. */
+function BeforeAfterSwitch() {
+  const showAfter = useStore((s) => s.whatifShowAfter);
+  const setShowAfter = useStore((s) => s.setWhatifShowAfter);
+  const rule = useStore((s) => s.whatif.mode === "rule");
+  const after = rule ? "With Recommended Rule" : "With Manual Change";
+  return (
+    <div className="segmented before-after" role="group" aria-label="Show the zones">
+      <button type="button" className={!showAfter ? "on" : ""} aria-pressed={!showAfter} onClick={() => setShowAfter(false)}>Current</button>
+      <button type="button" className={showAfter ? "on" : ""} aria-pressed={showAfter} onClick={() => setShowAfter(true)}>{after}</button>
+    </div>
+  );
+}
+
 /** Floor picker: shown in plan view and once a floor is selected, when other floors (and their tags) are hidden or lifted out of view. */
 function FloorPicker() {
   const { meta } = useData();
@@ -164,6 +178,7 @@ export default function Stage() {
               : mode === "replay" ? REPLAY_LABEL[p as Measure] : MEASURES[p as Measure].label}</option>)}
           </select>
         </label>
+        {topic === "comfort" && mode === "whatif" && <BeforeAfterSwitch />}
       </div>
       {isAuditMeasure(active) ? <div className="stage-bl"><AuditLegend measure={active} /></div>
         : mode !== "replay" && <div className="stage-bl"><Legend measure={active as Measure} /></div>}
@@ -179,7 +194,7 @@ export default function Stage() {
       <div className={`stage-bottom ${topic === "afterhours" ? "has-fab" : ""}`}>
         {mode === "replay" && <Player />}
         <p className="caption">
-          {scope.floor === undefined ? "Click a floor to open it. " : "Click a zone for detail. Esc goes back. "}
+          {scope.floor === undefined ? "Pick a floor on the left to open it. " : "Click a zone for detail. Esc goes back. "}
           Zone plans from CU-BEMS (Pipattanasomporn et al., 2020).
         </p>
       </div>

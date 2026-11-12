@@ -31,6 +31,7 @@ function useZoneLook(z: ZoneInfo) {
   const t = useStore((s) => s.replay.t);
   const after = useStore((s) => s.replay.after);
   const home = useStore((s) => s.topic === "home");
+  const showAfter = useStore((s) => s.whatifShowAfter);
   if (home) return { value: null, color: LANDING_ZONE, display: "", hasData: true };   // landing page: shape only, no data colours
   if (isAuditMeasure(measure)) {
     const audit = auditById.get(z.id);
@@ -96,7 +97,7 @@ function useZoneLook(z: ZoneInfo) {
   const m = mode === "replay" ? (measure === "ac" ? "ac" : "pmv") : measure;
   const value = mode === "replay"
     ? replayValue(replay, z.id, m, t, after)
-    : zoneValue(byId.get(z.id), m, mode === "whatif");
+    : zoneValue(byId.get(z.id), m, mode === "whatif" && showAfter);
   return { value, color: value === null ? C.nodata : MEASURES[m].color(value), display: fmt(value, MEASURES[m].unit), measure: m, hasData: value !== null };
 }
 
@@ -116,7 +117,8 @@ function Zone({ z, faded }: { z: ZoneInfo; faded: boolean }) {
   const setHover = useStore((s) => s.setHover);
   const auditLayer = isAuditMeasure(measure);
   const home = useStore((s) => s.topic === "home");
-  const breach = !auditLayer && mode === "whatif" && (byId.get(z.id)?.breach.length ?? 0) > 0;
+  const showAfter = useStore((s) => s.whatifShowAfter);
+  const breach = !auditLayer && mode === "whatif" && showAfter && (byId.get(z.id)?.breach.length ?? 0) > 0;
   const selected = scope.floor === z.floor && scope.zone === z.zone;
   const isHover = hover === z.id;
   const pulse = useRef<THREE.LineBasicMaterial>(null);
@@ -134,11 +136,12 @@ function Zone({ z, faded }: { z: ZoneInfo; faded: boolean }) {
     if (pulse.current) pulse.current.opacity = 0.35 + 0.6 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 4));
   });
 
+  // Zones only open on the floor already selected; changing floors is the floor picker's job.
+  const clickable = !home && scope.floor === z.floor;
   const onClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
-    if (useStore.getState().topic === "home") return;          // the landing cards are the way in
-    select(auditLayer ? { floor: z.floor, zone: z.zone }
-      : scope.floor === z.floor ? { floor: z.floor, zone: z.zone } : { floor: z.floor });
+    if (!clickable) return;
+    select({ floor: z.floor, zone: z.zone });
   };
   const edge = selected ? "#ffffff" : isHover ? "#cfe0f2" : !auditLayer && !home && z.inspect ? C.inspect : "#41597a";
 
@@ -149,7 +152,7 @@ function Zone({ z, faded }: { z: ZoneInfo; faded: boolean }) {
         rotation={UP}
         raycast={faded ? NO_RAYCAST : THREE.Mesh.prototype.raycast}
         onClick={onClick}
-        onPointerOver={(e) => { e.stopPropagation(); setHover(z.id); if (useStore.getState().topic !== "home") document.body.style.cursor = "pointer"; }}
+        onPointerOver={(e) => { e.stopPropagation(); setHover(z.id); if (clickable) document.body.style.cursor = "pointer"; }}
         onPointerOut={() => { setHover(null); document.body.style.cursor = ""; }}
       >
         <meshStandardMaterial
@@ -193,10 +196,13 @@ function Floor({ floor, zones }: { floor: number; zones: ZoneInfo[] }) {
   const base = floorY(floor);
   const lift = focus ? LIFT : scope.floor !== undefined && floor > scope.floor ? LIFT * 2.4 : 0;
   const home = useStore((s) => s.topic === "home");
+  // The slab never switches floors: on the open floor it just steps back from a zone to the floor.
   const onFloorClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
-    if (!home) select({ floor });
+    if (!home && focus && scope.zone) select({ floor });
   };
+  const slabRaycast = faded ? NO_RAYCAST : THREE.Mesh.prototype.raycast;   // hidden/lifted floors must not catch clicks
+  const slabOver = () => { if (!home && focus && scope.zone) document.body.style.cursor = "pointer"; };
   const band = useMemo(() => new THREE.ExtrudeGeometry(bandShape(), { depth: 0.17, bevelEnabled: false, curveSegments: 10 }), []);
   const core = useMemo(() => new THREE.ExtrudeGeometry(coreShape(floor), { depth: ZONE_H, bevelEnabled: false }), [floor]);
 
@@ -207,12 +213,12 @@ function Floor({ floor, zones }: { floor: number; zones: ZoneInfo[] }) {
   return (
     <group ref={group} position={[0, base, 0]} visible={!(view === "plan" && faded)}>
       {/* projecting floor band with rounded ends, as on the Chamchuri 5 facade */}
-      <mesh geometry={band} rotation={UP} onClick={onFloorClick} onPointerOver={() => { if (!home) document.body.style.cursor = "pointer"; }} onPointerOut={() => { document.body.style.cursor = ""; }}>
+      <mesh geometry={band} rotation={UP} raycast={slabRaycast} onClick={onFloorClick} onPointerOver={slabOver} onPointerOut={() => { document.body.style.cursor = ""; }}>
         <meshStandardMaterial color={focus ? "#3a5272" : "#2a3d57"} transparent opacity={faded ? 0.08 : focus ? 0.8 : 0.42} depthWrite={false} roughness={0.6} />
         <Edges color={focus ? "#a9c2de" : STONE} threshold={20} visible={!faded} />
       </mesh>
       {/* lift core */}
-      <mesh geometry={core} rotation={UP} position={[0, 0.17, 0]} onClick={onFloorClick} onPointerOver={() => { if (!home) document.body.style.cursor = "pointer"; }} onPointerOut={() => { document.body.style.cursor = ""; }}>
+      <mesh geometry={core} rotation={UP} position={[0, 0.17, 0]} raycast={slabRaycast} onClick={onFloorClick} onPointerOver={slabOver} onPointerOut={() => { document.body.style.cursor = ""; }}>
         <meshStandardMaterial color="#3b4a60" transparent opacity={faded ? 0.08 : 0.8} />
         <Edges color="#5a6c86" visible={!faded} />
       </mesh>
