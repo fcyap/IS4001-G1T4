@@ -11,7 +11,9 @@ The **Chamchuri 5** button (or Esc from the whole-building view) returns to the 
 
 **After-hours Waste** (Question A)
 - **Today**: colour zones by mean after-hours circuit load. The panel shows preventable energy and cost and the circuit
-  classification (preventable waste, critical standby or mixed). Selecting a zone shows its lighting and plug circuits.
+  classification (preventable waste, critical standby or mixed). Selecting a zone shows its lighting and plug circuits;
+  preventable circuits with a timer-like after-hours pattern (the K-Means Extended-Hours group) are flagged, because they
+  may follow an operating rule, so facility managers can keep them on with an exception.
 - **What-if simulation**: each circuit starts with the model's recommendation (Critical Standby: keep on 24/7; Preventable Waste: off after hours). Set the curfew hours for the building, a floor or a zone (off from 17:00–23:00 until 05:00–08:00), and choose whether weekends and public holidays are also off all day. In a zone, change any circuit to keep on 24/7, follow the curfew, or its own hours. Estimated energy and cost savings come from historical hourly circuit readings.
 
 **Cooling Comfort** (Question B)

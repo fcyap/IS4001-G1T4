@@ -233,12 +233,6 @@ function CurfewPlan() {
           <span className="sub">MEA TOU tariff, excl. VAT</span>
         </div>
       </div>
-      {!isBuilding && (
-        <p className="note plan-scope-saving">
-          Whole building: <b>{kwh(building.energyKwh)}</b> ({thb(building.costThb)})
-        </p>
-      )}
-
       {!isBuilding ? (
         <p className="note curfew-default-summary">
           Building default: <b>{formatWindow(def)}</b>.{" "}
@@ -397,13 +391,18 @@ function ZoneAtAGlance({ audit, measure }: { audit: EnergyAuditZone; measure: Ma
           const cKwh = month ? c.monthly[month]?.surplus_kwh ?? 0 : c.annual_surplus_kwh;
           const cThb = month ? c.monthly[month]?.cost_thb ?? 0 : c.annual_cost_thb;
           const isCritical = c.classification === "Critical Standby";
+          const isTimerLike = !isCritical && (c.behaviour_group ?? "").startsWith("Extended");
           const schedLabel = getCircuitPlanInfo(audit, c, null, month, curfew).setting;
           return (
             <li key={c.circuit_id}>
               <div className="rank-row">
-                <span className="rank-name">
+                <span
+                  className="rank-name"
+                  title={isTimerLike ? "Timer-like after-hours pattern: it may follow an operating rule (e.g. security lighting). If it must stay on, add an exception in the Curfew Plan." : undefined}
+                >
                   <b>{c.circuit_id.replace(/\(kW\)/i, "")}</b>
-                  <small>{c.classification} · {schedLabel}</small>
+                  <small>{c.classification}{isTimerLike ? " (timer-like)" : ""} · {schedLabel}</small>
+                  {isTimerLike && <small className="timer-hint">May follow an operating rule. Add an exception if it must stay on.</small>}
                 </span>
                 <span className="rank-bar">
                   <i

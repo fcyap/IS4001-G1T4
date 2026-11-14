@@ -225,6 +225,7 @@ def _build_scope_telemetry(
                 "space_name": space_name,
                 "type": c["type"],
                 "classification": c["classification"],
+                "behaviour_group": c.get("behaviour_group", ""),
                 "unocc_to_occ_ratio": c.get("unocc_to_occ_ratio", 0.0),
                 "offhours_cv": c.get("offhours_cv", 0.0),
                 "baseload_kw": round(float(c["baseload_kw"]), 3),
@@ -293,13 +294,13 @@ def _fallback_chat(message: str, ctx: dict[str, Any]) -> str:
                     f"saves **฿{int(ov['active_saved_thb']):,}** vs **฿{int(ov['default_17_08_thb']):,}** at default (`{int(ov['delta_thb_vs_default']):+,} THB`)."
                 )
         else:
-            lines.append("\nNo individual circuit overrides are currently active; all 61 Preventable Waste circuits follow the global curfew window.")
+            lines.append("\nNo individual circuit overrides are currently active; all Preventable Waste circuits follow the global curfew window.")
         return "\n".join(lines)
 
     if any(w in q for w in ["critical", "standby", "24/7", "lock", "keep on", "exempt"]):
         lines = [
             "### 🔒 Critical Standby Circuits (ON 24/7 by default)",
-            f"Based on K-Means clustering (Schedule Invariance Ratio, Off-Hours CV, and $P_{{2.5}}$ Baseload), **{len(criticals)} circuits** are classified as **Critical Standby**. "
+            f"Based on K-Means clustering of five behaviour features (after-hours on-time, overnight floor vs. peak, night-to-day ratio, weekend-to-weekday ratio and after-hours variability), **{len(criticals)} circuits** are classified as **Critical Standby**. "
             "Building, floor and zone curfews never switch them off; the FM can give an individual circuit its own curfew after confirming it is safe:",
         ]
         for c in criticals:
@@ -359,7 +360,8 @@ def generate_ai_chat(store: Store, req: AIChatRequest) -> dict[str, Any]:
         "Rules:\n"
         "1. NEVER mention internal notebook codes like '1e' or 'qn1e'. Refer to the model as the 'K-Means Baseload & Waste Classification Audit' and the default window as the 'Default 17:00–08:00 Baseline'.\n"
         "2. Circuit rules on the dashboard:\n"
-        "   - The K-Means classification is a RECOMMENDATION. 'Critical Standby' circuits (4 circuits on Floor 1: engine room & safety/exterior lighting) are recommended to stay ON 24/7; 'Preventable Waste' circuits (61 circuits) are recommended to be off during the after-hours curfew (default 17:00–08:00, plus all day on weekends & public holidays).\n"
+        "   - The K-Means classification is a RECOMMENDATION. 'Critical Standby' circuits (6 circuits: the Floor 1 electrical engine room's plugs and lighting, and always-on stair-hall plugs on Floors 2, 3, 5 and 6) are recommended to stay ON 24/7; 'Preventable Waste' circuits (59 circuits, including the Floor 1 exterior, stair-hall and sitting-hall lighting) are recommended to be off during the after-hours curfew (default 17:00–08:00, plus all day on weekends & public holidays).\n"
+        "   - K-Means (k = 3) finds three after-hours behaviours: 24/7 steady (Critical Standby, on ~100% of after-hours hours), timer-like (`behaviour_group` 'Extended-Hours / Scheduled', 16 circuits, on ~53%, e.g. Floor 1 lighting) and random on/off ('Occupancy-Following', 43 circuits, on ~21%). Both of the last two drop to ~0 kW after hours, so both are Preventable Waste. Timer-like circuits probably follow an operating rule (e.g. security or exterior lighting hours) that the data does not record; when asked about them, suggest the FM confirm the rule and add an exception (keep on, or own hours) if it must stay on.\n"
         "   - The FM can change any circuit: keep it on, follow the curfew, or give it its own hours, and can choose whether weekends & holidays are off all day or follow the same hours. Each circuit's `recommended` and `fm_setting` fields show both. When the FM switches off a circuit the model recommends keeping on, remind them to confirm with facilities that it is safe.\n"
         "3. Always cite exact circuit names, space uses, kW baseloads, kWh, and Thai Baht (฿) figures from the live telemetry context below, including any manual overrides in `fm_overrides`.\n"
         "4. Keep responses concise (under 170 words) using clean Markdown bullet points.\n\n"

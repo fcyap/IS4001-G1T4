@@ -24,6 +24,8 @@ export interface EnergyAuditCircuit {
   circuit_id: string;
   type: string;
   classification: Exclude<AuditClassification, "Mixed">;
+  /** K-Means behaviour group: "Critical Standby (24/7 Steady)", "Extended-Hours / Scheduled" or "Occupancy-Following". */
+  behaviour_group?: string;
   unocc_to_occ_ratio?: number;
   offhours_cv?: number;
   unocc_mean_kw: number | null; baseload_kw: number;

@@ -554,6 +554,7 @@ button.rank-row:hover { background: var(--panel-2); border-color: var(--line-2);
 /* "Where the Saving Comes From": the comfort change and held reasons wrap rather than truncate */
 .rank-name small.rank-detail, .rank-name small.rank-held { white-space: normal; overflow: visible; }
 .rank-name small.rank-held { color: var(--inspect); }
+.rank-name small.timer-hint { white-space: normal; overflow: visible; color: var(--warm); }
 
 /* Curfew plan: default + exceptions */
 .curfew-control-block .glance-h { margin: 0 0 8px; }
@@ -569,3 +570,5 @@ button.rank-row:hover { background: var(--panel-2); border-color: var(--line-2);
 .exception-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .exception-add select.mini { max-width: 100%; }
 .plan-scope-saving { margin: 8px 0 12px; }
+
+.note.curfew-default-summary { margin-top: 16px; }

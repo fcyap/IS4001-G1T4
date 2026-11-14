@@ -86,12 +86,16 @@ export default function Overview({ zones }: { zones: ZoneInfo[] }) {
     <Section title={scope.floor === undefined ? "Building at a Glance" : `Floor ${scope.floor} at a Glance`}
       aside={<span className="aside">{period}</span>} className="glance">
       <div className="stats">
-        <Stat label="After-hours Waste" value={kwh(all.kwh)} unit={thb(all.thb)}
-          hint="Above circuit baselines, excl. VAT" />
-        <Stat label="Office Time Too Cool" value={all.hasComfort ? n0(all.tooCool) : "–"} unit="%"
-          hint="PMV below −0.5, sensor zones only" />
+        {byWaste && (
+          <Stat label="After-hours Waste" value={kwh(all.kwh)} unit={thb(all.thb)}
+            hint="Above circuit baselines, excl. VAT" />
+        )}
+        {!byWaste && (
+          <Stat label="Office Time Too Cool" value={all.hasComfort ? n0(all.tooCool) : "–"} unit="%"
+            hint="PMV below −0.5, sensor zones only" />
+        )}
       </div>
-      {top && top.kwh > 0 && topUse && (
+      {byWaste && top && top.kwh > 0 && topUse && (
         <p className="glance-lead">
           Biggest opportunity in {where}: <b>{top.label}</b> ({topUse.name.toLowerCase()}),
           {" "}{kwh(top.kwh)}, {pct(top.kwh, all.kwh)} of the total.{" "}

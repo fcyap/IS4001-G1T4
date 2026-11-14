@@ -190,6 +190,7 @@ def _energy_audit() -> list[dict]:
                 "circuit_id": cid,
                 "type": str(row.Type),
                 "classification": str(row.Classification),
+                "behaviour_group": str(getattr(row, "Behaviour_Group", "") or ""),
                 "unocc_to_occ_ratio": ratio,
                 "offhours_cv": cv,
                 "unocc_mean_kw": unocc_mean if annual_hours else None,

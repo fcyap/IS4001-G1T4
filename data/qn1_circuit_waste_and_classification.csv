@@ -1,66 +1,66 @@
 Circuit_ID,Floor,Zone_Col,Type,Baseload_kW,Unocc_to_Occ_Ratio,OffHours_CV,Classification,Behaviour_Group,Unocc_Mean_kW,Surplus_kWh_18M,Annual_Surplus_kWh,Annual_Avoided_Cost_THB
-Floor1_z1_Light(kW),Floor1,z1_Light,Lighting,0.0,13.781055423229558,1.0359573730620042,Preventable Waste,Extended-Hours / Scheduled,8.05,77965.2,50143.4,162891.96
-Floor1_z1_Plug(kW),Floor1,z1_Plug,Plug Load,0.04,1.8609012818471042,1.7330489540603777,Preventable Waste,Extended-Hours / Scheduled,2.77,24066.7,18969.6,61623.17
-Floor1_z2_Light(kW),Floor1,z2_Light,Lighting,4.23,0.9788356403101611,0.3855463812695565,Critical Standby,Critical Standby (24/7 Steady),10.21,0.0,0.0,0.0
-Floor1_z2_Plug(kW),Floor1,z2_Plug,Plug Load,8.388,1.0120756202323067,0.18228077620871186,Critical Standby,Critical Standby (24/7 Steady),15.11,0.0,0.0,0.0
-Floor1_z3_Light(kW),Floor1,z3_Light,Lighting,5.52,0.9942726128576329,0.6524196079649895,Critical Standby,Extended-Hours / Scheduled,21.85,0.0,0.0,0.0
-Floor1_z3_Plug(kW),Floor1,z3_Plug,Plug Load,0.37,0.5133582802610203,0.49633904778043203,Preventable Waste,Extended-Hours / Scheduled,0.97,5472.8,3678.1,11948.39
-Floor1_z4_Light(kW),Floor1,z4_Light,Lighting,5.19,23.53970359957178,0.8079706836551435,Critical Standby,Extended-Hours / Scheduled,21.56,0.0,0.0,0.0
-Floor2_z1_Light(kW),Floor2,z1_Light,Lighting,0.01,0.10816839061059354,2.32806114387357,Preventable Waste,Occupancy-Following,0.94,8389.9,5181.5,16832.22
-Floor2_z1_Plug(kW),Floor2,z1_Plug,Plug Load,0.09,0.09696486810266286,1.2179638537448438,Preventable Waste,Occupancy-Following,0.39,2684.7,1311.6,4260.76
-Floor2_z2_Light(kW),Floor2,z2_Light,Lighting,0.0,0.07478650437301551,2.8409253308649696,Preventable Waste,Occupancy-Following,0.15,1425.2,960.8,3121.18
-Floor2_z2_Plug(kW),Floor2,z2_Plug,Plug Load,0.01,0.13744766571077296,1.0786652971747455,Preventable Waste,Occupancy-Following,0.07,627.9,388.7,1262.7
-Floor2_z3_Light(kW),Floor2,z3_Light,Lighting,0.02,0.4091643817319281,0.7761713257920699,Preventable Waste,Extended-Hours / Scheduled,0.39,2206.7,1434.3,4659.36
-Floor2_z3_Plug(kW),Floor2,z3_Plug,Plug Load,0.23,0.6525507320504111,0.6632984734097994,Preventable Waste,Critical Standby (24/7 Steady),0.29,603.4,454.5,1476.45
-Floor2_z4_Light(kW),Floor2,z4_Light,Lighting,0.0,0.10306664408578384,2.614599040452085,Preventable Waste,Occupancy-Following,0.19,1759.7,1178.8,3829.36
-Floor2_z4_Plug(kW),Floor2,z4_Plug,Plug Load,0.0,0.9349733608219353,1.1745887821419032,Preventable Waste,Extended-Hours / Scheduled,0.02,176.6,81.8,265.73
-Floor3_z1_Light(kW),Floor3,z1_Light,Lighting,0.0,0.15644821510773263,1.9685561410004642,Preventable Waste,Occupancy-Following,0.77,6105.9,3736.5,12138.1
-Floor3_z1_Plug(kW),Floor3,z1_Plug,Plug Load,0.02,0.18554344665800726,1.7701409898725786,Preventable Waste,Occupancy-Following,0.13,795.2,452.9,1471.26
-Floor3_z2_Light(kW),Floor3,z2_Light,Lighting,0.0,0.16668897013256545,2.076746740235944,Preventable Waste,Occupancy-Following,0.99,7764.0,4763.6,15474.66
-Floor3_z2_Plug(kW),Floor3,z2_Plug,Plug Load,0.01,0.10567189267452881,1.6513631545684186,Preventable Waste,Occupancy-Following,0.11,787.2,441.3,1433.57
-Floor3_z3_Light(kW),Floor3,z3_Light,Lighting,0.01,0.2781069314356805,1.3955553366679456,Preventable Waste,Occupancy-Following,0.27,2006.7,1231.5,4000.56
-Floor3_z3_Plug(kW),Floor3,z3_Plug,Plug Load,0.11,0.7437254271172029,0.24645031070939077,Preventable Waste,Critical Standby (24/7 Steady),0.42,749.5,408.0,1325.4
-Floor3_z4_Light(kW),Floor3,z4_Light,Lighting,0.0,0.1431725125455266,2.2258900102156995,Preventable Waste,Occupancy-Following,0.42,3245.8,1994.3,6478.53
-Floor3_z4_Plug(kW),Floor3,z4_Plug,Plug Load,0.01,0.09797993337834397,1.809020696029685,Preventable Waste,Occupancy-Following,0.07,484.8,267.5,868.98
-Floor3_z5_Light(kW),Floor3,z5_Light,Lighting,0.0,0.10633983212747791,3.00842651758476,Preventable Waste,Occupancy-Following,0.24,2032.3,1261.4,4097.69
-Floor3_z5_Plug(kW),Floor3,z5_Plug,Plug Load,0.02,0.11247332711752009,1.6700442317716486,Preventable Waste,Occupancy-Following,0.08,523.4,291.1,945.64
-Floor4_z1_Light(kW),Floor4,z1_Light,Lighting,0.0,0.16589581285613098,1.7675445556388443,Preventable Waste,Occupancy-Following,0.69,4955.1,3204.0,10408.27
-Floor4_z1_Plug(kW),Floor4,z1_Plug,Plug Load,0.03,0.17242066527790062,0.8430736393694717,Preventable Waste,Occupancy-Following,0.45,3676.4,2386.0,7750.97
-Floor4_z2_Light(kW),Floor4,z2_Light,Lighting,0.0,0.1482471483375702,2.0000914776404364,Preventable Waste,Occupancy-Following,0.3,2196.8,1484.8,4823.41
-Floor4_z2_Plug(kW),Floor4,z2_Plug,Plug Load,0.02,0.33853772804319215,0.8922895165621659,Preventable Waste,Extended-Hours / Scheduled,0.15,745.6,525.0,1705.47
-Floor4_z3_Light(kW),Floor4,z3_Light,Lighting,0.01,0.3464634125421046,1.2299446303102157,Preventable Waste,Extended-Hours / Scheduled,0.24,1826.4,1062.1,3450.26
-Floor4_z3_Plug(kW),Floor4,z3_Plug,Plug Load,0.0,0.940815962002623,0.4628152680980852,Preventable Waste,Extended-Hours / Scheduled,0.35,2525.0,1438.9,4674.3
-Floor4_z4_Light(kW),Floor4,z4_Light,Lighting,0.0,0.27679531825495907,1.4976313711595335,Preventable Waste,Occupancy-Following,0.93,7197.0,4506.1,14638.17
-Floor4_z4_Plug(kW),Floor4,z4_Plug,Plug Load,0.04,0.19470720057522323,1.3396529468154625,Preventable Waste,Occupancy-Following,0.2,1255.8,794.0,2579.33
-Floor4_z5_Light(kW),Floor4,z5_Light,Lighting,0.0,0.09165739796913486,2.6322559357261266,Preventable Waste,Occupancy-Following,0.14,1261.7,829.9,2695.95
-Floor4_z5_Plug(kW),Floor4,z5_Plug,Plug Load,0.02,0.2762060392842878,0.789907613075841,Preventable Waste,Extended-Hours / Scheduled,0.14,568.2,344.7,1119.77
-Floor5_z1_Light(kW),Floor5,z1_Light,Lighting,0.0,0.1521515458248471,2.1502281620501194,Preventable Waste,Occupancy-Following,0.71,6788.2,4499.5,14616.73
-Floor5_z1_Plug(kW),Floor5,z1_Plug,Plug Load,0.06,0.17404200652430488,0.8347369106853505,Preventable Waste,Occupancy-Following,0.25,1294.6,839.2,2726.16
-Floor5_z2_Light(kW),Floor5,z2_Light,Lighting,0.0,0.13234768349097512,2.2296979372918044,Preventable Waste,Occupancy-Following,0.48,4308.9,2697.5,8762.89
-Floor5_z2_Plug(kW),Floor5,z2_Plug,Plug Load,0.0,0.11674503997433656,1.6970668157638333,Preventable Waste,Occupancy-Following,0.03,299.1,191.6,622.42
-Floor5_z3_Light(kW),Floor5,z3_Light,Lighting,0.01,0.29911796951321257,1.3604462686172214,Preventable Waste,Occupancy-Following,0.22,1532.0,972.9,3160.49
-Floor5_z3_Plug(kW),Floor5,z3_Plug,Plug Load,0.23,0.9686703958917835,0.0985227875170071,Preventable Waste,Critical Standby (24/7 Steady),0.27,240.3,131.7,427.83
-Floor5_z4_Light(kW),Floor5,z4_Light,Lighting,0.0,0.23798041826458421,1.6969229785511826,Preventable Waste,Occupancy-Following,0.82,7064.6,4545.2,14765.18
-Floor5_z4_Plug(kW),Floor5,z4_Plug,Plug Load,0.04,0.21451812714485782,0.8484930109265852,Preventable Waste,Occupancy-Following,0.37,2075.9,1278.9,4154.54
-Floor5_z5_Light(kW),Floor5,z5_Light,Lighting,0.0,0.1770850810967973,2.1049610252130817,Preventable Waste,Occupancy-Following,0.49,4462.6,2917.9,9478.86
-Floor5_z5_Plug(kW),Floor5,z5_Plug,Plug Load,0.0,0.07522726341153972,2.087304693124054,Preventable Waste,Occupancy-Following,0.03,305.4,167.7,544.78
-Floor6_z1_Light(kW),Floor6,z1_Light,Lighting,0.0,0.18622581465387897,1.9468561817211445,Preventable Waste,Occupancy-Following,0.68,5531.3,3928.0,12760.2
-Floor6_z1_Plug(kW),Floor6,z1_Plug,Plug Load,0.08,0.28491255718075564,0.6400228563036362,Preventable Waste,Extended-Hours / Scheduled,0.29,990.4,708.6,2301.9
-Floor6_z2_Light(kW),Floor6,z2_Light,Lighting,0.01,0.24038315270022131,1.5188379305279451,Preventable Waste,Occupancy-Following,1.51,10691.3,8149.1,26472.53
-Floor6_z2_Plug(kW),Floor6,z2_Plug,Plug Load,0.01,0.16724741323806144,0.8621559211510472,Preventable Waste,Occupancy-Following,0.18,986.1,688.2,2235.63
-Floor6_z3_Light(kW),Floor6,z3_Light,Lighting,0.02,0.3204866718472644,1.107042615851818,Preventable Waste,Extended-Hours / Scheduled,0.6,3774.4,2821.3,9165.06
-Floor6_z3_Plug(kW),Floor6,z3_Plug,Plug Load,0.1,0.9591826410237223,0.21700638979498602,Preventable Waste,Critical Standby (24/7 Steady),0.27,194.4,152.6,495.72
-Floor6_z4_Light(kW),Floor6,z4_Light,Lighting,0.0,0.1326298593248224,1.9569105422732145,Preventable Waste,Occupancy-Following,0.56,4341.6,3222.7,10469.01
-Floor6_z4_Plug(kW),Floor6,z4_Plug,Plug Load,0.03,0.131407139606916,1.4987343302234213,Preventable Waste,Occupancy-Following,0.15,686.6,478.0,1552.79
-Floor6_z5_Light(kW),Floor6,z5_Light,Lighting,0.0,0.11957254302272077,2.0455216353227907,Preventable Waste,Occupancy-Following,0.3,2407.6,1789.7,5813.88
-Floor6_z5_Plug(kW),Floor6,z5_Plug,Plug Load,0.01,0.14587948744612814,0.8515707956460142,Preventable Waste,Occupancy-Following,0.08,301.6,205.0,665.95
-Floor7_z1_Light(kW),Floor7,z1_Light,Lighting,0.0,0.19983330524924833,1.7251128600891052,Preventable Waste,Occupancy-Following,0.41,3695.1,2371.2,7702.9
-Floor7_z1_Plug(kW),Floor7,z1_Plug,Plug Load,0.02,0.253638838835324,1.270971106072659,Preventable Waste,Occupancy-Following,0.11,643.8,426.8,1386.47
-Floor7_z2_Light(kW),Floor7,z2_Light,Lighting,0.0,0.27284088091835446,1.6412646207275952,Preventable Waste,Occupancy-Following,0.73,6768.9,4057.3,13180.23
-Floor7_z2_Plug(kW),Floor7,z2_Plug,Plug Load,0.0,0.18072467294732264,3.5168976535211938,Preventable Waste,Occupancy-Following,0.03,308.1,179.2,582.14
-Floor7_z3_Light(kW),Floor7,z3_Light,Lighting,0.01,0.5251864700782332,1.1670546576023317,Preventable Waste,Extended-Hours / Scheduled,0.1,784.2,475.0,1543.05
-Floor7_z3_Plug(kW),Floor7,z3_Plug,Plug Load,0.0,0.7305063333149352,0.6103265914897333,Preventable Waste,Extended-Hours / Scheduled,0.17,1658.2,957.9,3111.76
-Floor7_z4_Light(kW),Floor7,z4_Light,Lighting,0.0,0.2583156057048042,1.4948956003799472,Preventable Waste,Occupancy-Following,1.04,8620.9,5421.3,17611.21
-Floor7_z4_Plug(kW),Floor7,z4_Plug,Plug Load,0.0,0.18481046986349553,1.7164460139304694,Preventable Waste,Occupancy-Following,0.1,1021.7,513.3,1667.47
-Floor7_z5_Light(kW),Floor7,z5_Light,Lighting,0.0,0.23141794744284316,1.8089440975131672,Preventable Waste,Occupancy-Following,0.95,8026.8,5425.4,17624.53
-Floor7_z5_Plug(kW),Floor7,z5_Plug,Plug Load,0.0,0.4743801706913884,2.2726738118673357,Preventable Waste,Extended-Hours / Scheduled,0.05,424.4,234.3,761.13
+Floor1_z1_Light(kW),Floor1,z1_Light,Lighting,0.0,13.792140714740196,1.0060019834808127,Preventable Waste,Extended-Hours / Scheduled,8.05,77965.2,50143.4,159200.09
+Floor1_z1_Plug(kW),Floor1,z1_Plug,Plug Load,0.04,1.8616514284170256,1.6348831418210037,Preventable Waste,Extended-Hours / Scheduled,2.77,24066.7,18969.6,60226.51
+Floor1_z2_Light(kW),Floor1,z2_Light,Lighting,4.23,0.9789555690200141,0.3799094285680061,Critical Standby,Critical Standby (24/7 Steady),10.21,0.0,0.0,0.0
+Floor1_z2_Plug(kW),Floor1,z2_Plug,Plug Load,8.388,1.0120044204412832,0.13918708594007603,Critical Standby,Critical Standby (24/7 Steady),15.11,0.0,0.0,0.0
+Floor1_z3_Light(kW),Floor1,z3_Light,Lighting,5.52,0.9938880111349214,0.6374373112956484,Preventable Waste,Extended-Hours / Scheduled,21.85,133650.5,89376.4,283760.8
+Floor1_z3_Plug(kW),Floor1,z3_Plug,Plug Load,0.37,0.513313981094121,0.4446575472850169,Preventable Waste,Extended-Hours / Scheduled,0.97,5472.8,3678.1,11677.59
+Floor1_z4_Light(kW),Floor1,z4_Light,Lighting,5.19,23.527927061885755,0.7860110121591904,Preventable Waste,Extended-Hours / Scheduled,21.56,134820.0,90381.3,286951.25
+Floor2_z1_Light(kW),Floor2,z1_Light,Lighting,0.01,0.10814302158345944,2.2428998995298164,Preventable Waste,Occupancy-Following,0.94,8389.9,5181.5,16450.73
+Floor2_z1_Plug(kW),Floor2,z1_Plug,Plug Load,0.09,0.096941161803311,1.120954492689633,Preventable Waste,Occupancy-Following,0.39,2684.7,1311.6,4164.19
+Floor2_z2_Light(kW),Floor2,z2_Light,Lighting,0.0,0.0747608644311161,2.657678161427188,Preventable Waste,Occupancy-Following,0.15,1425.2,960.8,3050.44
+Floor2_z2_Plug(kW),Floor2,z2_Plug,Plug Load,0.01,0.13739945772639836,0.9256636107187984,Preventable Waste,Occupancy-Following,0.07,627.9,388.7,1234.08
+Floor2_z3_Light(kW),Floor2,z3_Light,Lighting,0.02,0.4091566774352796,0.6949424250135043,Preventable Waste,Extended-Hours / Scheduled,0.39,2206.7,1434.3,4553.75
+Floor2_z3_Plug(kW),Floor2,z3_Plug,Plug Load,0.23,0.6516280427300326,0.41494564203528894,Critical Standby,Critical Standby (24/7 Steady),0.29,0.0,0.0,0.0
+Floor2_z4_Light(kW),Floor2,z4_Light,Lighting,0.0,0.1029329188963305,2.4979163581698036,Preventable Waste,Occupancy-Following,0.19,1759.7,1178.8,3742.57
+Floor2_z4_Plug(kW),Floor2,z4_Plug,Plug Load,0.0,0.9354107919744815,1.173000671174888,Preventable Waste,Extended-Hours / Scheduled,0.02,176.6,81.8,259.71
+Floor3_z1_Light(kW),Floor3,z1_Light,Lighting,0.0,0.15629638195856596,1.88327342183346,Preventable Waste,Occupancy-Following,0.77,6105.9,3736.5,11863.0
+Floor3_z1_Plug(kW),Floor3,z1_Plug,Plug Load,0.02,0.18526567767214033,1.4338060223095648,Preventable Waste,Occupancy-Following,0.13,795.2,452.9,1437.91
+Floor3_z2_Light(kW),Floor3,z2_Light,Lighting,0.0,0.16614867029189634,1.9837086702515039,Preventable Waste,Occupancy-Following,0.99,7764.0,4763.6,15123.94
+Floor3_z2_Plug(kW),Floor3,z2_Plug,Plug Load,0.01,0.10550132568062819,1.456984416829462,Preventable Waste,Occupancy-Following,0.11,787.2,441.3,1401.08
+Floor3_z3_Light(kW),Floor3,z3_Light,Lighting,0.01,0.2778416303434282,1.234494059285569,Preventable Waste,Occupancy-Following,0.27,2006.7,1231.5,3909.88
+Floor3_z3_Plug(kW),Floor3,z3_Plug,Plug Load,0.11,0.7439843554936649,0.18028619281646072,Critical Standby,Critical Standby (24/7 Steady),0.42,0.0,0.0,0.0
+Floor3_z4_Light(kW),Floor3,z4_Light,Lighting,0.0,0.14318363116543004,1.9472748332646137,Preventable Waste,Occupancy-Following,0.42,3245.8,1994.3,6331.7
+Floor3_z4_Plug(kW),Floor3,z4_Plug,Plug Load,0.01,0.09796625545516464,1.3905903658806726,Preventable Waste,Occupancy-Following,0.07,484.8,267.5,849.28
+Floor3_z5_Light(kW),Floor3,z5_Light,Lighting,0.0,0.1063085782060729,2.573918366273559,Preventable Waste,Occupancy-Following,0.24,2032.3,1261.4,4004.81
+Floor3_z5_Plug(kW),Floor3,z5_Plug,Plug Load,0.02,0.11247626838421265,1.4332326184326871,Preventable Waste,Occupancy-Following,0.08,523.4,291.1,924.21
+Floor4_z1_Light(kW),Floor4,z1_Light,Lighting,0.0,0.1658239528350091,1.6878036239675074,Preventable Waste,Occupancy-Following,0.69,4955.1,3204.0,10172.37
+Floor4_z1_Plug(kW),Floor4,z1_Plug,Plug Load,0.03,0.17230237450000344,0.8003923190109835,Preventable Waste,Occupancy-Following,0.45,3676.4,2386.0,7575.3
+Floor4_z2_Light(kW),Floor4,z2_Light,Lighting,0.0,0.1481814347536545,1.9010730516314063,Preventable Waste,Occupancy-Following,0.3,2196.8,1484.8,4714.09
+Floor4_z2_Plug(kW),Floor4,z2_Plug,Plug Load,0.02,0.3385032481054521,0.5849787893163796,Preventable Waste,Extended-Hours / Scheduled,0.15,745.6,525.0,1666.82
+Floor4_z3_Light(kW),Floor4,z3_Light,Lighting,0.01,0.34645746878247585,1.0661548440488429,Preventable Waste,Extended-Hours / Scheduled,0.24,1826.4,1062.1,3372.06
+Floor4_z3_Plug(kW),Floor4,z3_Plug,Plug Load,0.0,0.9397794467695404,0.4343815501119168,Preventable Waste,Extended-Hours / Scheduled,0.35,2525.0,1438.9,4568.36
+Floor4_z4_Light(kW),Floor4,z4_Light,Lighting,0.0,0.2768373676619038,1.446571182665957,Preventable Waste,Occupancy-Following,0.93,7197.0,4506.1,14306.4
+Floor4_z4_Plug(kW),Floor4,z4_Plug,Plug Load,0.04,0.19461746068924224,1.1191007401823847,Preventable Waste,Occupancy-Following,0.2,1255.8,794.0,2520.87
+Floor4_z5_Light(kW),Floor4,z5_Light,Lighting,0.0,0.09162863586848292,2.5039224883808155,Preventable Waste,Occupancy-Following,0.14,1261.7,829.9,2634.85
+Floor4_z5_Plug(kW),Floor4,z5_Plug,Plug Load,0.02,0.2758350564269285,0.5697263046196855,Preventable Waste,Extended-Hours / Scheduled,0.14,568.2,344.7,1094.39
+Floor5_z1_Light(kW),Floor5,z1_Light,Lighting,0.0,0.15215455996825944,2.0027762365879145,Preventable Waste,Occupancy-Following,0.71,6788.2,4499.5,14285.45
+Floor5_z1_Plug(kW),Floor5,z1_Plug,Plug Load,0.06,0.17359492457678571,0.6644836500383411,Preventable Waste,Occupancy-Following,0.25,1294.6,839.2,2664.37
+Floor5_z2_Light(kW),Floor5,z2_Light,Lighting,0.0,0.13245233423995983,2.100795388728539,Preventable Waste,Occupancy-Following,0.48,4308.9,2697.5,8564.28
+Floor5_z2_Plug(kW),Floor5,z2_Plug,Plug Load,0.0,0.11680425710977216,1.2340580985328984,Preventable Waste,Occupancy-Following,0.03,299.1,191.6,608.31
+Floor5_z3_Light(kW),Floor5,z3_Light,Lighting,0.01,0.2986933819923703,1.1344140462130574,Preventable Waste,Occupancy-Following,0.22,1532.0,972.9,3088.86
+Floor5_z3_Plug(kW),Floor5,z3_Plug,Plug Load,0.23,0.9676770419970072,0.07010757972531409,Critical Standby,Critical Standby (24/7 Steady),0.27,0.0,0.0,0.0
+Floor5_z4_Light(kW),Floor5,z4_Light,Lighting,0.0,0.23789689388564497,1.620931376157572,Preventable Waste,Occupancy-Following,0.82,7064.6,4545.2,14430.54
+Floor5_z4_Plug(kW),Floor5,z4_Plug,Plug Load,0.04,0.21459068804195594,0.7377352472179429,Preventable Waste,Occupancy-Following,0.37,2075.9,1278.9,4060.37
+Floor5_z5_Light(kW),Floor5,z5_Light,Lighting,0.0,0.17704307450164805,1.9944278052731017,Preventable Waste,Occupancy-Following,0.49,4462.6,2917.9,9264.03
+Floor5_z5_Plug(kW),Floor5,z5_Plug,Plug Load,0.0,0.07524200881918675,1.9030260059671877,Preventable Waste,Occupancy-Following,0.03,305.4,167.7,532.43
+Floor6_z1_Light(kW),Floor6,z1_Light,Lighting,0.0,0.18632485670725013,1.833309283251267,Preventable Waste,Occupancy-Following,0.68,5531.3,3928.0,12470.99
+Floor6_z1_Plug(kW),Floor6,z1_Plug,Plug Load,0.08,0.2848450517723856,0.5581394308603796,Preventable Waste,Extended-Hours / Scheduled,0.29,990.4,708.6,2249.73
+Floor6_z2_Light(kW),Floor6,z2_Light,Lighting,0.01,0.24034434634141408,1.468066211636273,Preventable Waste,Occupancy-Following,1.51,10691.3,8149.1,25872.55
+Floor6_z2_Plug(kW),Floor6,z2_Plug,Plug Load,0.01,0.16720387690075314,0.7624348598338191,Preventable Waste,Occupancy-Following,0.18,986.1,688.2,2184.96
+Floor6_z3_Light(kW),Floor6,z3_Light,Lighting,0.02,0.3204686817527289,1.0353764499684033,Preventable Waste,Extended-Hours / Scheduled,0.6,3774.4,2821.3,8957.33
+Floor6_z3_Plug(kW),Floor6,z3_Plug,Plug Load,0.1,0.9591890089899181,0.050869997534664146,Critical Standby,Critical Standby (24/7 Steady),0.27,0.0,0.0,0.0
+Floor6_z4_Light(kW),Floor6,z4_Light,Lighting,0.0,0.13273876541892596,1.8448745401918423,Preventable Waste,Occupancy-Following,0.56,4341.6,3222.7,10231.74
+Floor6_z4_Plug(kW),Floor6,z4_Plug,Plug Load,0.03,0.131364773868353,1.1166813994190874,Preventable Waste,Occupancy-Following,0.15,686.6,478.0,1517.6
+Floor6_z5_Light(kW),Floor6,z5_Light,Lighting,0.0,0.1196693027423892,1.9117580474575486,Preventable Waste,Occupancy-Following,0.3,2407.6,1789.7,5682.11
+Floor6_z5_Plug(kW),Floor6,z5_Plug,Plug Load,0.01,0.14571672587195217,0.6305972221422256,Preventable Waste,Occupancy-Following,0.08,301.6,205.0,650.85
+Floor7_z1_Light(kW),Floor7,z1_Light,Lighting,0.0,0.19970295173421193,1.6517531504225615,Preventable Waste,Occupancy-Following,0.41,3695.1,2371.2,7528.31
+Floor7_z1_Plug(kW),Floor7,z1_Plug,Plug Load,0.02,0.25364173591485956,1.0011781771459989,Preventable Waste,Occupancy-Following,0.11,643.8,426.8,1355.05
+Floor7_z2_Light(kW),Floor7,z2_Light,Lighting,0.0,0.27259157725243033,1.5725532471603498,Preventable Waste,Occupancy-Following,0.73,6768.9,4057.3,12881.51
+Floor7_z2_Plug(kW),Floor7,z2_Plug,Plug Load,0.0,0.18048070189058504,2.153692075126373,Preventable Waste,Occupancy-Following,0.03,308.1,179.2,568.94
+Floor7_z3_Light(kW),Floor7,z3_Light,Lighting,0.01,0.5249734322094112,1.1164155062040455,Preventable Waste,Extended-Hours / Scheduled,0.1,784.2,475.0,1508.08
+Floor7_z3_Plug(kW),Floor7,z3_Plug,Plug Load,0.0,0.7300300646453103,0.6026298199217988,Preventable Waste,Extended-Hours / Scheduled,0.17,1658.2,957.9,3041.23
+Floor7_z4_Light(kW),Floor7,z4_Light,Lighting,0.0,0.2576111053405072,1.438604844612112,Preventable Waste,Occupancy-Following,1.04,8620.9,5421.3,17212.07
+Floor7_z4_Plug(kW),Floor7,z4_Plug,Plug Load,0.0,0.1846742700465014,1.628630815970242,Preventable Waste,Occupancy-Following,0.1,1021.7,513.3,1629.67
+Floor7_z5_Light(kW),Floor7,z5_Light,Lighting,0.0,0.2311977105499547,1.7249790428032774,Preventable Waste,Occupancy-Following,0.95,8026.8,5425.4,17225.08
+Floor7_z5_Plug(kW),Floor7,z5_Plug,Plug Load,0.0,0.4741873732451856,1.0979044708267018,Preventable Waste,Extended-Hours / Scheduled,0.05,424.4,234.3,743.88
