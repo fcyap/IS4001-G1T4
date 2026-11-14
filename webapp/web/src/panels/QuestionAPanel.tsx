@@ -1,12 +1,17 @@
-import type { EnergyAuditZone, ZoneInfo } from "../lib/api";
-import { AUDIT_CLASS_COLORS } from "../lib/colors";
+import { useEffect, useState } from "react";
+import type { CurfewException, EnergyAuditZone, ZoneInfo } from "../lib/api";
 import { useData } from "../lib/data";
 import { kwh, n3 } from "../lib/format";
 import {
+  countPlanChanges,
+  defaultWindow,
+  exceptionId,
+  formatWindow,
+  getCircuitPlanInfo,
   plannedScheduleSavings,
-  resolveCircuitWindow,
-  resolveFloorWindow,
-  resolveZoneWindow,
+  recommendedMode,
+  useCurfewSettings,
+  type CurfewWindow,
 } from "../lib/plan";
 import { monthLabel, useStore, type AuditMeasure, type MapMeasure, type Scope } from "../lib/store";
 import { zoneUse } from "../lib/zones";
@@ -98,464 +103,251 @@ function PreventableEnergyByCircuitAndMonth({ zones }: { zones: ZoneInfo[] }) {
   );
 }
 
-function AuditSavings() {
+/** Off-from / until pickers and the weekend checkbox, shared by the default and each exception. */
+function HoursPicker({ value, onChange, label }: { value: CurfewWindow; onChange: (w: CurfewWindow) => void; label: string }) {
+  return (
+    <div className="hours-picker">
+      <span>Off from</span>
+      <select className="mini" aria-label={`${label}: off from`} value={value.start_hour}
+        onChange={(e) => onChange({ ...value, start_hour: +e.target.value })}>
+        {START_HOURS.map((h) => <option key={h} value={h}>{h}:00</option>)}
+      </select>
+      <span>until</span>
+      <select className="mini" aria-label={`${label}: until`} value={value.end_hour}
+        onChange={(e) => onChange({ ...value, end_hour: +e.target.value })}>
+        {END_HOURS.map((h) => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
+      </select>
+      <label className="curfew-weekend compact">
+        <input type="checkbox" checked={value.weekends_off} aria-label={`${label}: weekends and holidays off all day`}
+          onChange={(e) => onChange({ ...value, weekends_off: e.target.checked })} />
+        Weekends &amp; holidays off all day
+      </label>
+    </div>
+  );
+}
+
+function exceptionLabel(e: CurfewException, auditById: Map<string, EnergyAuditZone>): string {
+  if (!e.zone) return `Floor ${e.floor} (all zones)`;
+  const zoneName = zoneUse(e.floor, e.zone)?.name ?? auditById.get(`F${e.floor}:${e.zone}`)?.zone;
+  const where = `Floor ${e.floor} · Zone ${e.zone.slice(1)}${zoneName ? ` (${zoneName})` : ""}`;
+  return e.circuit ? `${where} · ${e.circuit.replace(/\(kW\)/i, "").replace(/^Floor\d+_/, "")}` : `${where} · all circuits`;
+}
+
+/** The whole curfew plan in one place: a building-wide default plus a list of exceptions. */
+function CurfewPlan() {
   const { meta, auditById } = useData();
   const month = useStore((s) => s.month);
   const scope = useStore((s) => s.scope);
   const select = useStore((s) => s.select);
-
-  // Building-level defaults + Floor/Zone/Circuit manual overrides
-  const buildingStart = useStore((s) => s.auditStartHour);
-  const buildingEnd = useStore((s) => s.auditEndHour);
-  const setBuildingStart = useStore((s) => s.setAuditStartHour);
-  const setBuildingEnd = useStore((s) => s.setAuditEndHour);
-
-  const floorWindows = useStore((s) => s.auditFloorWindows);
-  const setFloorWindow = useStore((s) => s.setFloorWindow);
-  const clearFloorWindow = useStore((s) => s.clearFloorWindow);
-
-  const zoneWindows = useStore((s) => s.auditZoneWindows);
-  const setZoneWindow = useStore((s) => s.setZoneWindow);
-  const clearZoneWindow = useStore((s) => s.clearZoneWindow);
-
-  const circuitExemptions = useStore((s) => s.auditCircuitExemptions);
-  const circuitWindows = useStore((s) => s.auditCircuitWindows);
-  const toggleCircuitExemption = useStore((s) => s.toggleCircuitExemption);
-  const setCircuitWindow = useStore((s) => s.setCircuitWindow);
-  const clearCircuitWindow = useStore((s) => s.clearCircuitWindow);
-  const resetCircuitExemptions = useStore((s) => s.resetCircuitExemptions);
-
-  const isWholeBuilding = scope.floor === undefined;
-  const isFloor = scope.floor !== undefined && !scope.zone;
-  const isZone = scope.floor !== undefined && !!scope.zone;
-  const activeZoneId = isZone ? `F${scope.floor}:${scope.zone}` : "";
-
-  // Determine the active slider values for the current scope level (Building, Floor, or Zone)
-  const floorResolved = scope.floor !== undefined
-    ? resolveFloorWindow(scope.floor, buildingStart, buildingEnd, floorWindows)
-    : { start_hour: buildingStart, end_hour: buildingEnd, isOverridden: false };
-  const zoneResolved = isZone && scope.floor !== undefined && scope.zone
-    ? resolveZoneWindow(scope.floor, scope.zone, buildingStart, buildingEnd, floorWindows, zoneWindows)
-    : { start_hour: floorResolved.start_hour, end_hour: floorResolved.end_hour, isOverridden: false, source: "building" as const };
-
-  const activeStart = isZone
-    ? zoneResolved.start_hour
-    : isFloor
-      ? floorResolved.start_hour
-      : buildingStart;
-  const activeEnd = isZone
-    ? zoneResolved.end_hour
-    : isFloor
-      ? floorResolved.end_hour
-      : buildingEnd;
-
-  const handleSliderChange = (nextStart: number, nextEnd: number) => {
-    if (isZone && activeZoneId) {
-      setZoneWindow(activeZoneId, nextStart, nextEnd);
-    } else if (isFloor && scope.floor !== undefined) {
-      setFloorWindow(scope.floor, nextStart, nextEnd);
-    } else {
-      setBuildingStart(nextStart);
-      setBuildingEnd(nextEnd);
-    }
+  const setStart = useStore((s) => s.setAuditStartHour);
+  const setEnd = useStore((s) => s.setAuditEndHour);
+  const setWeekendsOff = useStore((s) => s.setAuditWeekendsOff);
+  const putException = useStore((s) => s.putException);
+  const removeException = useStore((s) => s.removeException);
+  const resetCurfewPlan = useStore((s) => s.resetCurfewPlan);
+  const curfew = useCurfewSettings();
+  const def = defaultWindow(curfew);
+  const setDefault = (w: CurfewWindow) => {
+    setStart(w.start_hour);
+    setEnd(w.end_hour);
+    setWeekendsOff(w.weekends_off);
   };
 
-  const estimate = meta
-    ? plannedScheduleSavings(
-        meta,
-        scope,
-        buildingStart,
-        buildingEnd,
-        month,
-        circuitExemptions,
-        circuitWindows,
-        floorWindows,
-        zoneWindows
-      )
-    : null;
+  // "Add exception" row, pre-filled from the zone or floor selected on the map
+  const floors = meta?.floors ?? [];
+  const [addFloor, setAddFloor] = useState<number>(scope.floor ?? floors[0] ?? 1);
+  const [addZone, setAddZone] = useState<string>(scope.zone ?? "");
+  const [addCircuit, setAddCircuit] = useState<string>("");
+  useEffect(() => {
+    if (scope.floor === undefined) return;
+    setAddFloor(scope.floor);
+    setAddZone(scope.zone ?? "");
+    setAddCircuit("");
+  }, [scope.floor, scope.zone]);
+  const zonesOnFloor = meta?.energy_audit.filter((a) => a.floor === addFloor) ?? [];
+  const circuitsInZone = zonesOnFloor.find((a) => a.zone === addZone)?.circuits ?? [];
+  const newId = exceptionId(addFloor, addZone || undefined, addCircuit || undefined);
+  const alreadyListed = curfew.exceptions.some((e) => e.id === newId);
+  const addException = () => putException({
+    id: newId,
+    floor: addFloor,
+    zone: addZone || undefined,
+    circuit: addCircuit || undefined,
+    mode: "hours",
+    ...def,
+  });
 
-  const currentAudits = isZone && scope.floor && scope.zone
-    ? [auditById.get(`F${scope.floor}:${scope.zone}`)].filter((a): a is EnergyAuditZone => !!a)
-    : isFloor && scope.floor
-      ? meta?.energy_audit.filter((a) => a.floor === scope.floor) ?? []
-      : meta?.energy_audit ?? [];
+  if (!meta) return null;
 
-  const totalPreventableKwh = currentAudits.reduce((sum, a) => sum + (month ? a.monthly[month]?.surplus_kwh ?? 0 : a.annual_surplus_kwh), 0);
-  const capturePct = totalPreventableKwh > 0 && estimate?.energyKwh !== undefined
-    ? Math.min(100, Math.round((estimate.energyKwh / totalPreventableKwh) * 100))
+  // Everything below follows the page: whole building, one floor, or one zone
+  const isBuilding = scope.floor === undefined;
+  const isZone = !isBuilding && !!scope.zone;
+  const scopeAudits = meta.energy_audit.filter((a) =>
+    (isBuilding || a.floor === scope.floor) && (!isZone || a.zone === scope.zone));
+  const building = plannedScheduleSavings(meta, {}, month, curfew);
+  const shown = isBuilding ? building : plannedScheduleSavings(meta, scope, month, curfew);
+  const preventableKwh = scopeAudits.reduce((sum, a) => sum + (month ? a.monthly[month]?.surplus_kwh ?? 0 : a.annual_surplus_kwh), 0);
+  const capturePct = preventableKwh > 0
+    ? Math.min(100, Math.round(((shown.energyKwh - shown.beyondRecommendationKwh) / preventableKwh) * 100))
     : 0;
-
-  const energy = estimate?.energyKwh;
-  const cost = estimate?.costThb;
-  const periodLabel = month ? monthLabel(month) : "Jul 2018–Jun 2019";
-  const windowDuration = ((24 - activeStart) + activeEnd).toFixed(0);
-  const endFmt = String(activeEnd).padStart(2, "0");
+  const relevantExceptions = isBuilding
+    ? curfew.exceptions
+    : curfew.exceptions.filter((e) => e.floor === scope.floor && (!isZone || !e.zone || e.zone === scope.zone));
+  const otherExceptions = curfew.exceptions.length - relevantExceptions.length;
+  const allCircuits = scopeAudits.flatMap((a) => a.circuits);
+  const circuitById = new Map(meta.energy_audit.flatMap((a) => a.circuits).map((c) => [c.circuit_id, c]));
+  const keepOnRecommended = allCircuits.filter((c) => recommendedMode(c) === "keep_on").length;
+  const periodLabel = month ? monthLabel(month) : "a year";
+  const scopeName = isBuilding ? "Whole building" : isZone ? `Floor ${scope.floor} · Zone ${scope.zone!.slice(1)}` : `Floor ${scope.floor}`;
+  const placeWord = isZone ? "zone" : "floor";
 
   const PRESETS = [
-    { label: "Default (17:00–08:00)", start: 17, end: 8 },
-    { label: "Late Office (18:00–08:00)", start: 18, end: 8 },
-    { label: "Night (20:00–07:00)", start: 20, end: 7 },
-    { label: "Early (19:00–05:00)", start: 19, end: 5 },
+    { label: "17:00–08:00", start: 17, end: 8 },
+    { label: "18:00–08:00", start: 18, end: 8 },
+    { label: "20:00–07:00", start: 20, end: 7 },
+    { label: "19:00–05:00", start: 19, end: 5 },
   ];
-
-  // Floor-by-floor breakdown when viewing Whole Building
-  const floorBreakdown = isWholeBuilding && meta
-    ? meta.floors.map((f) => {
-        const sav = plannedScheduleSavings(
-          meta,
-          { floor: f },
-          buildingStart,
-          buildingEnd,
-          month,
-          circuitExemptions,
-          circuitWindows,
-          floorWindows,
-          zoneWindows
-        );
-        const fWin = resolveFloorWindow(f, buildingStart, buildingEnd, floorWindows);
-        const zoneOvCount = Object.keys(zoneWindows).filter((zid) => zid.startsWith(`F${f}:`)).length;
-        return {
-          floor: f,
-          kwh: sav.energyKwh,
-          thb: sav.costThb,
-          start: fWin.start_hour,
-          end: fWin.end_hour,
-          isFloorOverridden: fWin.isOverridden,
-          zoneOvCount,
-        };
-      })
-    : [];
-  const maxFloorKwh = Math.max(...floorBreakdown.map((f) => f.kwh), 1);
-
-  // Zone-by-zone breakdown when viewing a single Floor
-  const zoneBreakdown = isFloor && scope.floor !== undefined && meta
-    ? currentAudits.map((a) => {
-        const sav = plannedScheduleSavings(
-          meta,
-          { floor: a.floor, zone: a.zone },
-          buildingStart,
-          buildingEnd,
-          month,
-          circuitExemptions,
-          circuitWindows,
-          floorWindows,
-          zoneWindows
-        );
-        const zWin = resolveZoneWindow(a.floor, a.zone, buildingStart, buildingEnd, floorWindows, zoneWindows);
-        const use = zoneUse(a.floor, a.zone);
-        const circuitOvCount = a.circuits.filter(
-          (c) => circuitExemptions[c.circuit_id] || circuitWindows[c.circuit_id]
-        ).length;
-        return {
-          zone: a.zone,
-          name: use?.name ?? `Zone ${a.zone.slice(1)}`,
-          classification: a.classification,
-          kwh: sav.energyKwh,
-          thb: sav.costThb,
-          start: zWin.start_hour,
-          end: zWin.end_hour,
-          isZoneOverridden: zWin.isOverridden,
-          circuitOvCount,
-        };
-      })
-    : [];
-  const maxZoneKwh = Math.max(...zoneBreakdown.map((z) => z.kwh), 1);
-
-  const zoneAudit = isZone && scope.floor && scope.zone ? auditById.get(`F${scope.floor}:${scope.zone}`) : undefined;
-  const totalOverrideCount =
-    Object.keys(floorWindows).length +
-    Object.keys(zoneWindows).length +
-    Object.keys(circuitExemptions).filter((id) => circuitExemptions[id]).length +
-    Object.keys(circuitWindows).length;
 
   return (
     <Section
-      title="Curfew Simulator"
-      aside={
-        totalOverrideCount > 0 ? (
-          <button type="button" className="link" onClick={resetCircuitExemptions}>
-            Reset All ({totalOverrideCount})
-          </button>
-        ) : (
-          <span className="aside">{activeStart}:00–{endFmt}:00 ({windowDuration}h) · {periodLabel}</span>
-        )
-      }
+      title="Curfew Plan"
+      aside={countPlanChanges(curfew) > 0
+        ? <button type="button" className="link" onClick={resetCurfewPlan}>Reset to recommendations</button>
+        : <span className="aside">{month ? monthLabel(month) : "Jul 2018–Jun 2019"}</span>}
       collapsible
       defaultOpen={true}
     >
-      {/* Scope hierarchy status bar */}
-      <div className="curfew-scope-status">
-        <span>
-          {isWholeBuilding && <>Building default. Floors and zones with their own curfew keep it.</>}
-          {isFloor && scope.floor !== undefined && (
-            floorResolved.isOverridden
-              ? <><b>Floor {scope.floor}</b> has its own curfew</>
-              : <>Follows the building ({buildingStart}:00–{String(buildingEnd).padStart(2, "0")}:00)</>
-          )}
-          {isZone && scope.floor !== undefined && scope.zone && (
-            zoneResolved.isOverridden
-              ? <><b>Zone {scope.zone.slice(1)}</b> has its own curfew</>
-              : <>Follows {zoneResolved.source === "floor" ? `Floor ${scope.floor}` : "the building"} ({zoneResolved.start_hour}:00–{String(zoneResolved.end_hour).padStart(2, "0")}:00)</>
-          )}
-        </span>
-        {isFloor && scope.floor !== undefined && floorResolved.isOverridden && (
-          <button type="button" className="link" onClick={() => clearFloorWindow(scope.floor!)}>
-            Revert to Building
-          </button>
-        )}
-        {isZone && activeZoneId && zoneResolved.isOverridden && (
-          <button type="button" className="link" onClick={() => clearZoneWindow(activeZoneId)}>
-            Revert to Floor
-          </button>
-        )}
-      </div>
-
-      <div className="curfew-control-block">
-        <div className="curfew-dual-sliders">
-          <label className="slider">
-            <div className="slider-label-row">
-              <span>Curfew starts</span>
-              <b>{activeStart}:00</b>
-            </div>
-            <input
-              type="range"
-              min={17}
-              max={23}
-              step={1}
-              value={activeStart}
-              aria-label="Curfew evening start hour"
-              onChange={(e) => handleSliderChange(+e.target.value, activeEnd)}
-            />
-            <span className="slider-ends"><span>17:00</span><span>23:00</span></span>
-          </label>
-
-          <label className="slider">
-            <div className="slider-label-row">
-              <span>Curfew ends</span>
-              <b>{endFmt}:00</b>
-            </div>
-            <input
-              type="range"
-              min={5}
-              max={8}
-              step={1}
-              value={activeEnd}
-              aria-label="Curfew morning end hour"
-              onChange={(e) => handleSliderChange(activeStart, +e.target.value)}
-            />
-            <span className="slider-ends"><span>05:00</span><span>08:00</span></span>
-          </label>
-        </div>
-
-        <div className="curfew-presets">
-          <div className="preset-buttons">
-            {PRESETS.map((p) => (
-              <button
-                key={p.label}
-                type="button"
-                className={activeStart === p.start && activeEnd === p.end ? "preset-btn active" : "preset-btn"}
-                onClick={() => handleSliderChange(p.start, p.end)}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
       <div className="result">
         <div>
           <span className="stat-label">Energy Saved</span>
-          <span className="big">{energy === undefined ? "Unavailable" : kwh(energy)}</span>
-          <span className="sub">{capturePct}% of preventable waste</span>
+          <span className="big">{kwh(shown.energyKwh)}</span>
+          <span className="sub">
+            {scopeName}, {periodLabel}
+            {preventableKwh > 0 ? ` · ${capturePct}% of preventable waste` : " · no preventable waste here"}
+            {shown.beyondRecommendationKwh > 0 ? ` · ${kwh(shown.beyondRecommendationKwh)} from circuits the model recommends keeping on` : ""}
+          </span>
         </div>
         <div>
           <span className="stat-label">Cost Saved</span>
-          <span className="big">{cost === undefined ? "Unavailable" : thb(cost)}</span>
+          <span className="big">{thb(shown.costThb)}</span>
           <span className="sub">MEA TOU tariff, excl. VAT</span>
         </div>
       </div>
-
-      {/* LEVEL 1 -> LEVEL 2: WHOLE BUILDING -> FLOOR BREAKDOWN */}
-      {isWholeBuilding && floorBreakdown.length > 0 && (
-        <div className="whatif-scope-breakdown">
-          <h3 className="glance-h">Floor curfews</h3>
-          <ol className="rank">
-            {floorBreakdown.map((f) => {
-              const fEndFmt = String(f.end).padStart(2, "0");
-              return (
-                <li key={f.floor}>
-                  <button
-                    type="button"
-                    className="rank-row"
-                    onClick={() => select({ floor: f.floor })}
-                  >
-                    <span className="rank-name">
-                      <b>Floor {f.floor}</b>
-                      <small>
-                        Off {f.start}:00–{fEndFmt}:00
-                        {f.isFloorOverridden ? " · own curfew" : ""}
-                        {f.zoneOvCount > 0 ? ` · ${f.zoneOvCount} zone override${f.zoneOvCount > 1 ? "s" : ""}` : ""}
-                      </small>
-                    </span>
-                    <span className="rank-bar">
-                      <i style={{ width: `${(f.kwh / maxFloorKwh) * 100}%`, background: f.isFloorOverridden || f.zoneOvCount > 0 ? "var(--inspect)" : "var(--warm)" }} />
-                    </span>
-                    <span className="rank-val">
-                      <b>{kwh(f.kwh)}</b>
-                      <small>{thb(f.thb)}</small>
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-        </div>
+      {!isBuilding && (
+        <p className="note plan-scope-saving">
+          Whole building: <b>{kwh(building.energyKwh)}</b> ({thb(building.costThb)})
+        </p>
       )}
 
-      {/* LEVEL 2 -> LEVEL 3: FLOOR -> ZONE BREAKDOWN */}
-      {isFloor && zoneBreakdown.length > 0 && (
-        <div className="whatif-scope-breakdown">
-          <h3 className="glance-h">Zone curfews on Floor {scope.floor}</h3>
-          <ol className="rank">
-            {zoneBreakdown.map((z) => {
-              const zEndFmt = String(z.end).padStart(2, "0");
-              const isAllCritical = z.classification === "Critical Standby";
-              return (
-                <li key={z.zone}>
-                  <button
-                    type="button"
-                    className="rank-row"
-                    onClick={() => select({ floor: scope.floor, zone: z.zone })}
-                  >
-                    <span className="rank-name">
-                      <b>Zone {z.zone.slice(1)} · <small>{z.name}</small></b>
-                      <small>
-                        {isAllCritical
-                          ? "Critical standby, always on"
-                          : `Off ${z.start}:00–${zEndFmt}:00${z.isZoneOverridden ? " · own curfew" : ""}${z.circuitOvCount > 0 ? ` · ${z.circuitOvCount} circuit override${z.circuitOvCount > 1 ? "s" : ""}` : ""}`}
-                      </small>
-                    </span>
-                    <span className="rank-bar">
-                      <i style={{ width: `${isAllCritical ? 100 : (z.kwh / maxZoneKwh) * 100}%`, background: isAllCritical ? "var(--comfy)" : z.isZoneOverridden || z.circuitOvCount > 0 ? "var(--inspect)" : "var(--warm)", opacity: isAllCritical ? 0.35 : 1 }} />
-                    </span>
-                    <span className="rank-val">
-                      <b>{isAllCritical ? "Always on" : kwh(z.kwh)}</b>
-                      <small>{isAllCritical ? "Locked" : thb(z.thb)}</small>
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
+      {!isBuilding ? (
+        <p className="note curfew-default-summary">
+          Building default: <b>{formatWindow(def)}</b>.{" "}
+          <button type="button" className="link" onClick={() => select({})}>Change it on the building page</button>
+        </p>
+      ) : (
+      <div className="curfew-control-block">
+        <h3 className="glance-h">Default for all circuits</h3>
+        <HoursPicker value={def} onChange={setDefault} label="Default" />
+        <div className="preset-buttons">
+          {PRESETS.map((p) => (
+            <button key={p.label} type="button"
+              className={def.start_hour === p.start && def.end_hour === p.end ? "preset-btn active" : "preset-btn"}
+              onClick={() => setDefault({ ...def, start_hour: p.start, end_hour: p.end })}>
+              {p.label}
+            </button>
+          ))}
         </div>
+      </div>
       )}
 
-      {/* LEVEL 3 -> LEVEL 4: ZONE -> THE 2 CIRCUITS (LIGHT & PLUG) */}
-      {isZone && zoneAudit && (
-        <div className="circuit-exemptions-section">
-          <div className="circuit-exemptions-header">
-            <h3 className="glance-h">Circuits</h3>
-          </div>
-          <div className="circuit-cards">
-            {zoneAudit.circuits.map((c) => {
-              const isCritical = c.classification === "Critical Standby";
-              const isExempt = !!circuitExemptions[c.circuit_id];
-              const resolved = resolveCircuitWindow(
-                zoneAudit.floor,
-                zoneAudit.zone,
-                c.circuit_id,
-                buildingStart,
-                buildingEnd,
-                floorWindows,
-                zoneWindows,
-                circuitWindows
-              );
-              const isCircuitOverridden = resolved.source === "circuit" || isExempt;
-              return (
-                <div key={c.circuit_id} className={`circuit-card ${isExempt ? "exempt" : ""} ${isCritical ? "critical" : ""}`}>
-                  <div className="circuit-card-main">
-                    <div>
-                      <strong>{c.circuit_id.replace(/\(kW\)/i, "")}</strong>
-                      <span className="zone-popup-badge" style={{ color: AUDIT_CLASS_COLORS[c.classification] }}>
-                        {c.classification}
-                      </span>
-                    </div>
-                    <small>
-                      {c.type} · Base {c.baseload_kw.toFixed(2)} kW · Unocc {(c.unocc_mean_kw ?? 0).toFixed(2)} kW
-                      {isCircuitOverridden ? " · own setting" : ""}
-                    </small>
-                  </div>
-                  <div className="circuit-card-action">
-                    {isCritical ? (
-                      <span className="badge-critical-lock">Always on</span>
-                    ) : (
-                      <div className="circuit-inline-controls">
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={!isExempt}
-                          aria-label={`After-hours curfew for ${c.circuit_id.replace(/\(kW\)/i, "")}`}
-                          className={`circuit-toggle-btn ${isExempt ? "exempt" : "active"}`}
-                          onClick={() => toggleCircuitExemption(c.circuit_id)}
-                        >
-                          {isExempt ? "Exempt, stays on" : "On curfew"}
-                        </button>
-                        {!isExempt && (
-                          <div className="circuit-window-selects">
-                            <select
-                              className="mini"
-                              value={resolved.start_hour}
-                              onChange={(e) => setCircuitWindow(c.circuit_id, +e.target.value, resolved.end_hour)}
-                              aria-label="Curfew start hour"
-                            >
-                              {START_HOURS.map((h) => (
-                                <option key={h} value={h}>{h}:00</option>
-                              ))}
-                            </select>
-                            <span>–</span>
-                            <select
-                              className="mini"
-                              value={resolved.end_hour}
-                              onChange={(e) => setCircuitWindow(c.circuit_id, resolved.start_hour, +e.target.value)}
-                              aria-label="Curfew end hour"
-                            >
-                              {END_HOURS.map((h) => (
-                                <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>
-                              ))}
-                            </select>
-                            {resolved.source === "circuit" && (
-                              <button
-                                type="button"
-                                className="link"
-                                onClick={() => clearCircuitWindow(c.circuit_id)}
-                              >
-                                Reset
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
+      <div className="curfew-control-block">
+        <h3 className="glance-h">
+          {isBuilding ? "Exceptions" : isZone ? "Exceptions that apply to this zone" : `Exceptions on Floor ${scope.floor}`} ({relevantExceptions.length})
+        </h3>
+        {relevantExceptions.length === 0 && (
+          <p className="note">
+            {isBuilding
+              ? "No exceptions. Every circuit follows the default and the model's recommendation."
+              : `None. This ${placeWord} follows the building default and the model's recommendation.`}
+          </p>
+        )}
+        <ul className="exception-list">
+          {relevantExceptions.map((e) => {
+            const circuit = e.circuit ? circuitById.get(e.circuit) : undefined;
+            const againstAdvice = circuit && e.mode === "hours" && recommendedMode(circuit) === "keep_on";
+            const label = exceptionLabel(e, auditById);
+            return (
+              <li key={e.id} className="exception-row">
+                <div className="exception-head">
+                  <b>{label}</b>
+                  <select className="mini" aria-label={`${label}: setting`} value={e.mode}
+                    onChange={(ev) => putException({ ...e, mode: ev.target.value as CurfewException["mode"] })}>
+                    <option value="hours">Off on its own hours</option>
+                    <option value="keep_on">Keep on 24/7</option>
+                  </select>
+                  <button type="button" className="link exception-remove" aria-label={`Remove exception for ${label}`}
+                    onClick={() => removeException(e.id)}>✕</button>
                 </div>
-              );
-            })}
-          </div>
+                {e.mode === "hours" && (
+                  <HoursPicker value={e} onChange={(w) => putException({ ...e, ...w })} label={label} />
+                )}
+                {againstAdvice && (
+                  <small className="critical-override-note">
+                    ⚠ The model recommends keeping this circuit on. Check with facilities before switching it off.
+                  </small>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+
+        <div className="exception-add">
+          {isBuilding && (
+          <select className="mini" aria-label="Exception floor" value={addFloor}
+            onChange={(e) => { setAddFloor(+e.target.value); setAddZone(""); setAddCircuit(""); }}>
+            {floors.map((f) => <option key={f} value={f}>Floor {f}</option>)}
+          </select>
+          )}
+          {!isZone && (
+          <select className="mini" aria-label="Exception zone" value={addZone}
+            onChange={(e) => { setAddZone(e.target.value); setAddCircuit(""); }}>
+            <option value="">All zones</option>
+            {zonesOnFloor.map((a) => (
+              <option key={a.zone} value={a.zone}>Zone {a.zone.slice(1)}</option>
+            ))}
+          </select>
+          )}
+          <select className="mini" aria-label="Exception circuit" value={addCircuit} disabled={!addZone}
+            onChange={(e) => setAddCircuit(e.target.value)}>
+            <option value="">{isZone ? "Whole zone" : "All circuits"}</option>
+            {circuitsInZone.map((c) => (
+              <option key={c.circuit_id} value={c.circuit_id}>{c.circuit_id.replace(/\(kW\)/i, "").replace(/^Floor\d+_/, "")}</option>
+            ))}
+          </select>
+          <button type="button" className="preset-btn" onClick={addException} disabled={alreadyListed}>
+            {alreadyListed ? "Already listed" : isZone ? "+ Add exception for this zone" : isBuilding ? "+ Add exception" : `+ Add exception on Floor ${scope.floor}`}
+          </button>
         </div>
-      )}
+        {!isBuilding && otherExceptions > 0 && (
+          <p className="note">
+            {otherExceptions} more exception{otherExceptions > 1 ? "s" : ""} elsewhere in the building.{" "}
+            <button type="button" className="link" onClick={() => select({})}>See all</button>
+          </p>
+        )}
+      </div>
+
+      <p className="note">
+        <b>Model recommendations{isBuilding ? "" : ` for this ${placeWord}`}</b> (applied automatically): {keepOnRecommended} circuit{keepOnRecommended === 1 ? "" : "s"} kept on 24/7 as critical standby,{" "}
+        {allCircuits.length - keepOnRecommended} off with the default. Floor and zone exceptions only change circuits that are
+        off after hours; to switch off a circuit the model recommends keeping on, add an exception for that circuit.
+      </p>
     </Section>
   );
 }
 
 function ZoneAtAGlance({ audit, measure }: { audit: EnergyAuditZone; measure: MapMeasure }) {
   const month = useStore((s) => s.month);
-  const buildingStart = useStore((s) => s.auditStartHour);
-  const buildingEnd = useStore((s) => s.auditEndHour);
-  const floorWindows = useStore((s) => s.auditFloorWindows);
-  const zoneWindows = useStore((s) => s.auditZoneWindows);
-  const circuitExemptions = useStore((s) => s.auditCircuitExemptions);
-  const circuitWindows = useStore((s) => s.auditCircuitWindows);
+  const curfew = useCurfewSettings();
   const period = month ? monthLabel(month) : "Jul 2018–Jun 2019";
   const isLoad = measure === "audit_load";
 
@@ -605,23 +397,7 @@ function ZoneAtAGlance({ audit, measure }: { audit: EnergyAuditZone; measure: Ma
           const cKwh = month ? c.monthly[month]?.surplus_kwh ?? 0 : c.annual_surplus_kwh;
           const cThb = month ? c.monthly[month]?.cost_thb ?? 0 : c.annual_cost_thb;
           const isCritical = c.classification === "Critical Standby";
-          const isExempt = !isCritical && !!circuitExemptions[c.circuit_id];
-          const resolved = resolveCircuitWindow(
-            audit.floor,
-            audit.zone,
-            c.circuit_id,
-            buildingStart,
-            buildingEnd,
-            floorWindows,
-            zoneWindows,
-            circuitWindows
-          );
-          const effE = String(resolved.end_hour).padStart(2, "0");
-          const schedLabel = isCritical
-            ? "Always on"
-            : isExempt
-              ? "Exempt, stays on"
-              : `Off ${resolved.start_hour}:00–${effE}:00`;
+          const schedLabel = getCircuitPlanInfo(audit, c, null, month, curfew).setting;
           return (
             <li key={c.circuit_id}>
               <div className="rank-row">
@@ -639,7 +415,7 @@ function ZoneAtAGlance({ audit, measure }: { audit: EnergyAuditZone; measure: Ma
                   />
                 </span>
                 <span className="rank-val">
-                  <b>{isCritical ? "Always on" : kwh(cKwh)}</b>
+                  <b>{isCritical ? "Kept on" : kwh(cKwh)}</b>
                   <small>{isCritical ? `${c.baseload_kw.toFixed(2)} kW base` : thb(cThb)}</small>
                 </span>
               </div>
@@ -662,7 +438,7 @@ export default function QuestionAPanel({ zones, measure, scope, auditZone, detai
   if (showPlanner) {
     return (
       <>
-        <AuditSavings />
+        <CurfewPlan />
         <QuestionAPlan zones={zones} />
       </>
     );

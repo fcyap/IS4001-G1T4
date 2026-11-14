@@ -67,6 +67,7 @@ class AIChatMessage(BaseModel):
 class CircuitWindowOverride(BaseModel):
     start_hour: int = Field(17, ge=17, le=23)
     end_hour: int = Field(8, ge=5, le=8)
+    weekends_off: bool = True   # True: also off all day on weekends & holidays
 
 
 class AIChatRequest(BaseModel):
@@ -77,16 +78,19 @@ class AIChatRequest(BaseModel):
     month: str | None = None
     start_hour: int = Field(17, ge=17, le=23)
     end_hour: int = Field(8, ge=5, le=8)
-    exemptions: list[str] = []
+    weekends_off: bool = True
+    kept_on: list[str] = []      # circuits the FM keeps on 24/7 against a curfew recommendation
     circuit_windows: dict[str, CircuitWindowOverride] = {}
     api_key: str | None = None
 
 
-def _find_timing_scenario(timing_list: list[dict], start_hour: int, end_hour: int) -> dict | None:
+def _find_timing_scenario(timing_list: list[dict], start_hour: int, end_hour: int,
+                          weekends_off: bool = True) -> dict | None:
     if not timing_list:
         return None
     for row in timing_list:
-        if row.get("start_hour") == start_hour and row.get("end_hour") == end_hour:
+        if (row.get("start_hour") == start_hour and row.get("end_hour") == end_hour
+                and row.get("weekends_off", True) == weekends_off):
             return row
     for row in timing_list:
         if row.get("cutoff_hour") == start_hour:
@@ -100,11 +104,14 @@ def _circuit_savings_for_window(
     month: str | None,
     start_hour: int,
     end_hour: int,
+    weekends_off: bool = True,
+    include_critical: bool = False,
 ) -> tuple[float, float]:
-    if circuit["classification"] == "Critical Standby":
+    # Critical Standby circuits save nothing unless the FM has chosen to put them on a curfew.
+    if circuit["classification"] == "Critical Standby" and not include_critical:
         return 0.0, 0.0
     cid = circuit["circuit_id"]
-    scen = _find_timing_scenario(store.afterhours_timing.get(f"circuit:{cid}", []), start_hour, end_hour)
+    scen = _find_timing_scenario(store.afterhours_timing.get(f"circuit:{cid}", []), start_hour, end_hour, weekends_off)
     if month:
         m_scen = (scen or {}).get("monthly", {}).get(month, {})
         m_aud = circuit.get("monthly", {}).get(month, {})
@@ -123,8 +130,9 @@ def _build_scope_telemetry(
     month: str | None,
     start_hour: int,
     end_hour: int,
-    exemptions: set[str],
+    kept_on: set[str],
     circuit_windows: dict[str, CircuitWindowOverride],
+    weekends_off: bool = True,
 ) -> dict[str, Any]:
     audits = [
         a for a in store.energy_audit
@@ -146,43 +154,59 @@ def _build_scope_telemetry(
         for c in audit["circuits"]:
             cid = c["circuit_id"]
             is_critical = c["classification"] == "Critical Standby"
-            is_exempt = cid in exemptions and not is_critical
-            custom_win = circuit_windows.get(cid) if not is_critical and not is_exempt else None
+            # The K-Means classification is a recommendation; the FM's choice wins.
+            recommended = "keep_on" if is_critical else "curfew"
+            win = circuit_windows.get(cid)
+            mode = "keep_on" if cid in kept_on else ("curfew" if win is not None else recommended)
+            is_exempt = mode == "keep_on" and not is_critical
 
-            # Baseline (default 17:00-08:00, no FM overrides)
+            # Baseline: model recommendation with the default 17:00-08:00 curfew, weekends & holidays off
             base_kwh, base_thb = _circuit_savings_for_window(store, c, month, 17, 8)
             default_total_kwh += base_kwh
             default_total_thb += base_thb
 
-            if is_critical:
+            if mode == "keep_on":
                 saved_kwh, saved_thb = 0.0, 0.0
-                active_schedule = "Locked ON 24/7 (Critical Standby)"
-                critical_count += 1
-            elif is_exempt:
-                saved_kwh, saved_thb = 0.0, 0.0
-                active_schedule = "Manual Override: Kept ON 24/7 (Exempt)"
-                fm_overrides_summary.append({
-                    "circuit_id": cid,
-                    "space_name": space_name,
-                    "override": "Switched to ON 24/7 (Exempt from curfew)",
-                    "active_saved_kwh": 0.0,
-                    "active_saved_thb": 0.0,
-                    "default_17_08_kwh": round(base_kwh, 1),
-                    "default_17_08_thb": round(base_thb, 0),
-                    "delta_thb_vs_default": round(-base_thb, 0),
-                })
-            else:
-                eff_start = custom_win.start_hour if custom_win else start_hour
-                eff_end = custom_win.end_hour if custom_win else end_hour
-                saved_kwh, saved_thb = _circuit_savings_for_window(store, c, month, eff_start, eff_end)
-                active_schedule = f"Curfew Off {eff_start:02d}:00–{eff_end:02d}:00"
-                if saved_thb > 0:
-                    curfew_count += 1
-                if custom_win and (custom_win.start_hour != start_hour or custom_win.end_hour != end_hour):
+                if is_critical:
+                    active_schedule = "ON 24/7 (model recommendation)"
+                    critical_count += 1
+                else:
+                    active_schedule = "Kept ON 24/7 by the FM (model recommends a curfew)"
                     fm_overrides_summary.append({
                         "circuit_id": cid,
                         "space_name": space_name,
-                        "override": f"Custom Curfew Off {eff_start:02d}:00–{eff_end:02d}:00",
+                        "override": "Kept ON 24/7 (model recommends a curfew)",
+                        "active_saved_kwh": 0.0,
+                        "active_saved_thb": 0.0,
+                        "default_17_08_kwh": round(base_kwh, 1),
+                        "default_17_08_thb": round(base_thb, 0),
+                        "delta_thb_vs_default": round(-base_thb, 0),
+                    })
+            else:
+                eff_start = win.start_hour if win else start_hour
+                eff_end = win.end_hour if win else end_hour
+                eff_wk = win.weekends_off if win else weekends_off
+                saved_kwh, saved_thb = _circuit_savings_for_window(
+                    store, c, month, eff_start, eff_end, eff_wk, include_critical=True)
+                wk_txt = "" if eff_wk else ", same hours on weekends & holidays"
+                active_schedule = f"Curfew Off {eff_start:02d}:00–{eff_end:02d}:00{wk_txt}"
+                curfew_count += 1
+                if is_critical:
+                    fm_overrides_summary.append({
+                        "circuit_id": cid,
+                        "space_name": space_name,
+                        "override": f"Put on curfew Off {eff_start:02d}:00–{eff_end:02d}:00{wk_txt} although the model recommends keeping it on (confirm it is safe to switch off)",
+                        "active_saved_kwh": round(saved_kwh, 1),
+                        "active_saved_thb": round(saved_thb, 0),
+                        "default_17_08_kwh": 0.0,
+                        "default_17_08_thb": 0.0,
+                        "delta_thb_vs_default": round(saved_thb, 0),
+                    })
+                elif win and (eff_start, eff_end, eff_wk) != (start_hour, end_hour, weekends_off):
+                    fm_overrides_summary.append({
+                        "circuit_id": cid,
+                        "space_name": space_name,
+                        "override": f"Custom Curfew Off {eff_start:02d}:00–{eff_end:02d}:00{wk_txt}",
                         "active_saved_kwh": round(saved_kwh, 1),
                         "active_saved_thb": round(saved_thb, 0),
                         "default_17_08_kwh": round(base_kwh, 1),
@@ -208,6 +232,8 @@ def _build_scope_telemetry(
                 "active_schedule": active_schedule,
                 "is_critical": is_critical,
                 "is_exempt": is_exempt,
+                "recommended": recommended,
+                "fm_setting": mode,
                 "saved_kwh": round(saved_kwh, 1),
                 "saved_thb": round(saved_thb, 0),
                 "default_17_08_kwh": round(base_kwh, 1),
@@ -272,8 +298,9 @@ def _fallback_chat(message: str, ctx: dict[str, Any]) -> str:
 
     if any(w in q for w in ["critical", "standby", "24/7", "lock", "keep on", "exempt"]):
         lines = [
-            "### 🔒 Critical Standby Circuits (Locked ON 24/7)",
-            "Based on K-Means clustering (Schedule Invariance Ratio, Off-Hours CV, and $P_{2.5}$ Baseload), **4 circuits** are classified as **Critical Standby** and remain locked **ON 24/7**:",
+            "### 🔒 Critical Standby Circuits (ON 24/7 by default)",
+            f"Based on K-Means clustering (Schedule Invariance Ratio, Off-Hours CV, and $P_{{2.5}}$ Baseload), **{len(criticals)} circuits** are classified as **Critical Standby**. "
+            "Building, floor and zone curfews never switch them off; the FM can give an individual circuit its own curfew after confirming it is safe:",
         ]
         for c in criticals:
             lines.append(
@@ -314,8 +341,9 @@ def generate_ai_chat(store: Store, req: AIChatRequest) -> dict[str, Any]:
         req.month,
         req.start_hour,
         req.end_hour,
-        set(req.exemptions),
+        set(req.kept_on),
         req.circuit_windows,
+        req.weekends_off,
     )
     api_key = resolve_api_key(req.api_key)
     if not api_key:
@@ -331,8 +359,8 @@ def generate_ai_chat(store: Store, req: AIChatRequest) -> dict[str, Any]:
         "Rules:\n"
         "1. NEVER mention internal notebook codes like '1e' or 'qn1e'. Refer to the model as the 'K-Means Baseload & Waste Classification Audit' and the default window as the 'Default 17:00–08:00 Baseline'.\n"
         "2. Circuit rules on the dashboard:\n"
-        "   - 'Critical Standby' circuits (4 circuits on Floor 1: engine room & safety/exterior lighting) are LOCKED ON 24/7 and cannot be switched off.\n"
-        "   - 'Preventable Waste' circuits (61 circuits) default to Off during the after-hours curfew window (17:00–08:00), but the FM can manually adjust the global curfew sliders, exempt specific circuits to stay ON 24/7, or set a custom curfew window per circuit.\n"
+        "   - The K-Means classification is a RECOMMENDATION. 'Critical Standby' circuits (4 circuits on Floor 1: engine room & safety/exterior lighting) are recommended to stay ON 24/7; 'Preventable Waste' circuits (61 circuits) are recommended to be off during the after-hours curfew (default 17:00–08:00, plus all day on weekends & public holidays).\n"
+        "   - The FM can change any circuit: keep it on, follow the curfew, or give it its own hours, and can choose whether weekends & holidays are off all day or follow the same hours. Each circuit's `recommended` and `fm_setting` fields show both. When the FM switches off a circuit the model recommends keeping on, remind them to confirm with facilities that it is safe.\n"
         "3. Always cite exact circuit names, space uses, kW baseloads, kWh, and Thai Baht (฿) figures from the live telemetry context below, including any manual overrides in `fm_overrides`.\n"
         "4. Keep responses concise (under 170 words) using clean Markdown bullet points.\n\n"
         f"LIVE DASHBOARD & TELEMETRY CONTEXT:\n{json.dumps(ctx, ensure_ascii=False)}"

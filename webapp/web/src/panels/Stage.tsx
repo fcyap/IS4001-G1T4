@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { AUDIT_CLASS_COLORS, auditValueColor, MEASURES } from "../lib/colors";
 import { useData } from "../lib/data";
+import { useCurfewSettings, useZoneSavings } from "../lib/plan";
 import { dateLabel } from "../lib/format";
 import { isAuditMeasure, monthLabel, useStore, type AuditMeasure, type MapMeasure, type Measure } from "../lib/store";
 
@@ -38,10 +39,13 @@ function AuditLegend({ measure }: { measure: AuditMeasure }) {
   const mode = useStore((s) => s.mode);
   const startHour = useStore((s) => s.auditStartHour);
   const endHour = useStore((s) => s.auditEndHour);
-  const values = (meta?.energy_audit ?? []).map((z) => measure === "audit_load"
+  const zoneSaved = useZoneSavings(meta, month, useCurfewSettings());
+  const showSaved = mode === "whatif" && (measure === "audit_kwh" || measure === "audit_cost");
+  const rawValues = (meta?.energy_audit ?? []).map((z) => measure === "audit_load"
     ? month ? z.monthly[month]?.unocc_mean_kw : z.unocc_mean_kw
     : month ? measure === "audit_cost" ? z.monthly[month]?.cost_thb : z.monthly[month]?.surplus_kwh
       : measure === "audit_cost" ? z.annual_cost_thb : z.annual_surplus_kwh).filter((v): v is number => v !== null);
+  const values = showSaved ? [...zoneSaved.values()].map((v) => (measure === "audit_cost" ? v.thb : v.kwh)) : rawValues;
   const max = Math.max(...values, 1);
   const unit = measure === "audit_load" ? "kW" : measure === "audit_cost" ? "THB" : "kWh";
   const endFmt = String(endHour).padStart(2, "0");
@@ -56,7 +60,9 @@ function AuditLegend({ measure }: { measure: AuditMeasure }) {
         <div className="legend-keys">
           <span><i className="k-nodata" />No circuit data</span>
           <span>
-            {mode === "whatif"
+            {showSaved
+              ? "Saved by the curfew plan"
+              : mode === "whatif"
               ? `After curfew ${startHour}:00–${endFmt}:00`
               : month ? monthLabel(month) : "Jul 2018–Jun 2019"}
           </span>
@@ -172,8 +178,8 @@ export default function Stage() {
           <select value={active} onChange={(e) => setMeasure(e.target.value as MapMeasure)}>
             {picks.map((p) => <option key={p} value={p}>{isAuditMeasure(p)
               ? p === "audit_load" ? "After-hours Load (kW)"
-                : p === "audit_kwh" ? "Preventable Energy (kWh)"
-                  : p === "audit_cost" ? "Cost Opportunity (THB)"
+                : p === "audit_kwh" ? (mode === "whatif" ? "Energy Saved (kWh)" : "Preventable Energy (kWh)")
+                  : p === "audit_cost" ? (mode === "whatif" ? "Cost Saved (THB)" : "Cost Opportunity (THB)")
                     : "Waste Status"
               : mode === "replay" ? REPLAY_LABEL[p as Measure] : MEASURES[p as Measure].label}</option>)}
           </select>

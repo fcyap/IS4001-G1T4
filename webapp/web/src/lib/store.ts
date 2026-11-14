@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { CircuitWindowOverride, ScenarioBody } from "./api";
+import type { CurfewException, ScenarioBody } from "./api";
 
 export type Topic = "home" | "afterhours" | "comfort";   // landing page, Question A, Question B
 export type Mode = "overview" | "whatif" | "replay";
@@ -21,10 +21,8 @@ interface State {
   auditCutoffHour: number;
   auditStartHour: number;           // Whole-building default start hour (17:00)
   auditEndHour: number;             // Whole-building default end hour (08:00)
-  auditFloorWindows: Record<number, CircuitWindowOverride>;     // Manual floor overrides: floor -> {start_hour, end_hour}
-  auditZoneWindows: Record<string, CircuitWindowOverride>;      // Manual zone overrides: "F2:z1" -> {start_hour, end_hour}
-  auditCircuitExemptions: Record<string, boolean>;              // Manual circuit ON 24/7 exemptions
-  auditCircuitWindows: Record<string, CircuitWindowOverride>;   // Manual circuit window overrides
+  auditWeekendsOff: boolean;        // Whole-building default: also off all day on weekends & holidays
+  auditExceptions: CurfewException[];  // FM exceptions to the default curfew (floor, zone or circuit)
   view: "3d" | "plan";
   hover: string | null;
   whatif: { mode: "global" | "rule"; globalC: number; overrides: Record<string, number> };
@@ -48,14 +46,11 @@ interface State {
   setAuditCutoffHour: (hour: number) => void;
   setAuditStartHour: (hour: number) => void;
   setAuditEndHour: (hour: number) => void;
-  setFloorWindow: (floor: number, start_hour: number, end_hour: number) => void;
-  clearFloorWindow: (floor: number) => void;
-  setZoneWindow: (zoneId: string, start_hour: number, end_hour: number) => void;
-  clearZoneWindow: (zoneId: string) => void;
-  toggleCircuitExemption: (circuitId: string) => void;
-  setCircuitWindow: (circuitId: string, start_hour: number, end_hour: number) => void;
-  clearCircuitWindow: (circuitId: string) => void;
-  resetCircuitExemptions: () => void;
+  setAuditWeekendsOff: (weekendsOff: boolean) => void;
+  /** Adds the exception, replacing any existing one for the same target. */
+  putException: (exception: CurfewException) => void;
+  removeException: (id: string) => void;
+  resetCurfewPlan: () => void;
   setView: (v: "3d" | "plan") => void;
   setHover: (id: string | null) => void;
   setWhatif: (p: Partial<State["whatif"]>) => void;
@@ -96,10 +91,8 @@ export const useStore = create<State>((set, get) => ({
   auditCutoffHour: 17,
   auditStartHour: 17,
   auditEndHour: 8,
-  auditFloorWindows: {},
-  auditZoneWindows: {},
-  auditCircuitExemptions: {},
-  auditCircuitWindows: {},
+  auditWeekendsOff: true,
+  auditExceptions: [],
   view: q.get("view") === "plan" ? "plan" : "3d",
   hover: null,
   whatif: { mode: "rule", globalC: 1, overrides: {} },
@@ -162,54 +155,21 @@ export const useStore = create<State>((set, get) => ({
   setAuditCutoffHour: (hour) => set({ auditCutoffHour: hour, auditStartHour: hour }),
   setAuditStartHour: (hour) => set({ auditStartHour: hour, auditCutoffHour: hour }),
   setAuditEndHour: (hour) => set({ auditEndHour: hour }),
-  setFloorWindow: (floor, start_hour, end_hour) => set((s) => ({
-    auditFloorWindows: { ...s.auditFloorWindows, [floor]: { start_hour, end_hour } },
-  })),
-  clearFloorWindow: (floor) => set((s) => {
-    const next = { ...s.auditFloorWindows };
-    delete next[floor];
-    return { auditFloorWindows: next };
+  setAuditWeekendsOff: (weekendsOff) => set({ auditWeekendsOff: weekendsOff }),
+  putException: (exception) => set((s) => {
+    const i = s.auditExceptions.findIndex((e) => e.id === exception.id);
+    const next = [...s.auditExceptions];
+    if (i >= 0) next[i] = exception;
+    else next.push(exception);
+    return { auditExceptions: next };
   }),
-  setZoneWindow: (zoneId, start_hour, end_hour) => set((s) => ({
-    auditZoneWindows: { ...s.auditZoneWindows, [zoneId]: { start_hour, end_hour } },
-  })),
-  clearZoneWindow: (zoneId) => set((s) => {
-    const next = { ...s.auditZoneWindows };
-    delete next[zoneId];
-    return { auditZoneWindows: next };
-  }),
-  toggleCircuitExemption: (circuitId) => set((s) => {
-    const nextExempt = !s.auditCircuitExemptions[circuitId];
-    return {
-      auditCircuitExemptions: { ...s.auditCircuitExemptions, [circuitId]: nextExempt },
-    };
-  }),
-  setCircuitWindow: (circuitId, start_hour, end_hour) => set((s) => {
-    const exemptions = { ...s.auditCircuitExemptions };
-    delete exemptions[circuitId];
-    return {
-      auditCircuitExemptions: exemptions,
-      auditCircuitWindows: {
-        ...s.auditCircuitWindows,
-        [circuitId]: { start_hour, end_hour },
-      },
-    };
-  }),
-  clearCircuitWindow: (circuitId) => set((s) => {
-    const windows = { ...s.auditCircuitWindows };
-    delete windows[circuitId];
-    const exemptions = { ...s.auditCircuitExemptions };
-    delete exemptions[circuitId];
-    return { auditCircuitWindows: windows, auditCircuitExemptions: exemptions };
-  }),
-  resetCircuitExemptions: () => set({
+  removeException: (id) => set((s) => ({ auditExceptions: s.auditExceptions.filter((e) => e.id !== id) })),
+  resetCurfewPlan: () => set({
     auditStartHour: 17,
     auditCutoffHour: 17,
     auditEndHour: 8,
-    auditFloorWindows: {},
-    auditZoneWindows: {},
-    auditCircuitExemptions: {},
-    auditCircuitWindows: {},
+    auditWeekendsOff: true,
+    auditExceptions: [],
   }),
   setView: (view) => set({ view }),
   setHover: (hover) => set({ hover }),

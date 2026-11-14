@@ -444,6 +444,20 @@ button.rank-row:hover { background: var(--panel-2); border-color: var(--line-2);
 .circuit-toggle-btn.active { color: var(--comfy); border-color: color-mix(in srgb, var(--comfy) 45%, transparent); }
 .circuit-toggle-btn.exempt { color: var(--warm); border-color: color-mix(in srgb, var(--warm) 45%, transparent); }
 .badge-critical-lock { padding: 4px 9px; border: 1px solid var(--line-2); border-radius: 999px; color: var(--ink-2); font-size: var(--t-xs); white-space: nowrap; }
+.critical-override-note { color: var(--inspect); font-size: var(--t-xs); max-width: 260px; text-align: right; }
+.circuit-card-action { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.circuit-choice { max-width: 260px; }
+.circuit-card-action .circuit-window-selects { flex-wrap: wrap; justify-content: flex-end; }
+.curfew-weekend { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; font-size: var(--t-s); cursor: pointer; }
+.curfew-weekend input { margin-top: 3px; }
+.curfew-weekend small { display: block; color: var(--muted); font-size: var(--t-xs); }
+.curfew-weekend.compact { align-items: center; gap: 4px; margin: 0 0 0 6px; font-size: var(--t-xs); }
+.curfew-weekend.compact input { margin-top: 0; }
+@media (max-width: 520px) {
+  .circuit-card { flex-direction: column; align-items: stretch; }
+  .circuit-card-action { align-items: stretch; }
+  .circuit-choice, .critical-override-note { max-width: none; text-align: left; }
+}
 
 /* --- Circuit curfew schedule --------------------------------------------------------------- */
 .plan-precedence { margin: 6px 0 10px; }
@@ -540,3 +554,18 @@ button.rank-row:hover { background: var(--panel-2); border-color: var(--line-2);
 /* "Where the Saving Comes From": the comfort change and held reasons wrap rather than truncate */
 .rank-name small.rank-detail, .rank-name small.rank-held { white-space: normal; overflow: visible; }
 .rank-name small.rank-held { color: var(--inspect); }
+
+/* Curfew plan: default + exceptions */
+.curfew-control-block .glance-h { margin: 0 0 8px; }
+.curfew-control-block .preset-buttons { margin-top: 10px; }
+.hours-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--t-s); color: var(--ink-2); }
+.hours-picker .curfew-weekend.compact { margin: 0 0 0 4px; }
+.exception-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.exception-row { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: var(--r-s); background: var(--panel); }
+.exception-head { display: flex; align-items: center; gap: 8px; }
+.exception-head b { flex: 1; min-width: 0; font-size: var(--t-s); font-weight: 600; }
+.exception-remove { font-size: var(--t-m); padding: 0 4px; }
+.exception-row .critical-override-note { max-width: none; text-align: left; }
+.exception-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.exception-add select.mini { max-width: 100%; }
+.plan-scope-saving { margin: 8px 0 12px; }

@@ -152,7 +152,11 @@ def _energy_audit() -> list[dict]:
             for month, frame in hourly_by_month:
                 unoccupied = frame.loc[frame["Is_Unoccupied"], row.Circuit_ID]
                 observed = unoccupied.dropna()
-                if is_preventable and c_dict:
+                if is_preventable and "_Light" in str(row.Circuit_ID):
+                    # Lights can be switched fully off after hours, so all after-hours lighting load is preventable
+                    # (matches _afterhours_timing, so a full curfew captures 100% of it).
+                    excess = observed.clip(lower=0.0)
+                elif is_preventable and c_dict:
                     sub_frame = frame.loc[observed.index]
                     base_vals = [c_dict.get((d, h), float(row.Baseload_kW)) for d, h in zip(sub_frame["dow"], sub_frame["hr"])]
                     excess = pd.Series((observed.values - np.array(base_vals)).clip(min=0.0), index=observed.index)
@@ -267,12 +271,18 @@ def _afterhours_timing() -> dict[str, list[dict]]:
         if column not in hourly:
             continue
         observed = hourly[column].to_numpy(dtype=float)
-        if row.Classification == "Preventable Waste":
+        # Savings are computed for every circuit, including Critical Standby ones: those only count when the
+        # FM gives that circuit its own curfew (see the scope loop below and getCircuitPlanInfo in plan.ts).
+        if "_Light" in column:
+            # A lighting curfew switches the lights off, so the whole load in curfew hours is saved,
+            # not only the part above the P2.5 baseline (for lights on every night, that baseline is well above 0).
+            excess = np.where(np.isfinite(observed), np.maximum(observed, 0), 0)
+        else:
+            # Plug circuits keep their P2.5 standby floor (e.g. fridges or network equipment that must stay
+            # powered), so only the load above that floor counts as saved.
             bases = np.array([dynamic.get(column, {}).get((int(d), int(h)), float(row.Baseload_kW))
                               for d, h in zip(hourly["dow"], hours)])
             excess = np.where(np.isfinite(observed), np.maximum(observed - bases, 0), 0)
-        else:
-            excess = np.zeros_like(observed)
         circuit_loads.append((int(row.floor), str(row.zone), column, row.Classification == "Preventable Waste", observed, excess))
 
     result: dict[str, list[dict]] = {"building": []}
@@ -283,73 +293,86 @@ def _afterhours_timing() -> dict[str, list[dict]]:
     for item in circuit_loads:
         result[f"circuit:{item[2]}"] = []
 
-    combinations = []
-    # start_hour: 17 to 23; end_hour: 5 to 8
-    for s_hr in range(17, 24):
-        for e_hr in range(5, 9):
-            combinations.append((s_hr, e_hr, s_hr))
-    # Legacy cutoffs 24..30 with end_hour = 8
-    for c_hr in range(24, 31):
-        combinations.append((c_hr, 8, c_hr))
+    # Curfew windows: start 17:00-23:00, end 05:00-08:00, each with weekends & holidays either off all day
+    # (weekends_off=True, the original behaviour) or under the same hours as weekdays (weekends_off=False).
+    combinations = [(s_hr, e_hr, s_hr, wk_off) for wk_off in (True, False)
+                    for s_hr in range(17, 24) for e_hr in range(5, 9)]
+    # Legacy cutoffs 24..30 (midnight to 06:00 on the following day) with end_hour = 8
+    combinations += [(c_hr, 8, c_hr, True) for c_hr in range(24, 31)]
 
-    for start_hour, end_hour, cutoff_hour in combinations:
+    month_list = sorted(set(months))
+    month_idx = np.searchsorted(np.array(month_list), months)
+    n_months = len(month_list)
+    in_annual = np.isin(months, list(annual_months))
+
+    # Per-circuit quantities that do not depend on the curfew window
+    prepared = []
+    for floor, zone, circuit_id, preventable, observed, excess in circuit_loads:
+        finite = np.isfinite(observed)
+        obs_mask = is_unoccupied & finite
+        hours_m = np.bincount(month_idx[obs_mask], minlength=n_months).astype(float)
+        load_m = np.bincount(month_idx[obs_mask], weights=observed[obs_mask], minlength=n_months)
+        current_m = np.divide(load_m, hours_m, out=np.zeros(n_months), where=hours_m > 0)
+        a_mask = obs_mask & in_annual
+        hours_a = int(a_mask.sum())
+        current_a = float(observed[a_mask].sum()) / hours_a if hours_a else 0.0
+        scopes = ("building", f"F{floor}", f"F{floor}:{zone}", f"circuit:{circuit_id}")
+        prepared.append((scopes, preventable, finite, excess, excess * rates, hours_m, current_m, hours_a, current_a))
+
+    for start_hour, end_hour, cutoff_hour, weekends_off in combinations:
         if start_hour < 24:
-            weekday_schedule = (hours >= start_hour) | (hours < end_hour)
+            schedule = (hours >= start_hour) | (hours < end_hour)
         else:
             # Cutoffs 24–30 mean midnight through 06:00 on the following day.
-            weekday_schedule = (hours >= start_hour - 24) & (hours < end_hour)
-        selected = is_unoccupied & (~is_workday | weekday_schedule)
-        monthly_totals: dict[str, dict[str, list[float]]] = {
-            key: {month: [0.0, 0.0, 0.0, 0.0, 0.0] for month in sorted(set(months))} for key in result
-        }
-        annual_totals: dict[str, list[float]] = {key: [0.0, 0.0, 0.0, 0.0, 0.0] for key in result}
-        for floor, zone, circuit_id, preventable, observed, excess in circuit_loads:
-            scopes = ("building", f"F{floor}", f"F{floor}:{zone}", f"circuit:{circuit_id}")
-            for month in monthly_totals["building"]:
-                month_mask = months == month
-                observed_mask = is_unoccupied & month_mask & np.isfinite(observed)
-                hours_count = int(observed_mask.sum())
-                current_kw = float(observed[observed_mask].sum()) / hours_count if hours_count else 0.0
-                saved_mask = selected & month_mask & np.isfinite(observed)
-                energy = float(excess[saved_mask].sum())
-                cost = float((excess[saved_mask] * rates[saved_mask]).sum())
-                projected_kw = current_kw - energy / hours_count if hours_count else 0.0
-                for scope in scopes:
-                    totals = monthly_totals[scope][month]
-                    totals[0] += energy
-                    totals[1] += cost
-                    totals[2] += current_kw
-                    totals[3] += projected_kw
-                    totals[4] += current_kw if preventable else 0.0
-            annual_mask = np.isin(months, list(annual_months))
-            observed_mask = is_unoccupied & annual_mask & np.isfinite(observed)
-            hours_count = int(observed_mask.sum())
-            current_kw = float(observed[observed_mask].sum()) / hours_count if hours_count else 0.0
-            saved_mask = selected & annual_mask & np.isfinite(observed)
-            energy = float(excess[saved_mask].sum())
-            cost = float((excess[saved_mask] * rates[saved_mask]).sum())
-            projected_kw = current_kw - energy / hours_count if hours_count else 0.0
+            schedule = (hours >= start_hour - 24) & (hours < end_hour)
+        selected = is_unoccupied & ((~is_workday | schedule) if weekends_off else schedule)
+        # rows: energy, cost, load_kw, projected_kw, preventable_load_kw
+        monthly_totals = {key: np.zeros((5, n_months)) for key in result}
+        annual_totals = {key: np.zeros(5) for key in result}
+        for scopes, preventable, finite, excess, cost_w, hours_m, current_m, hours_a, current_a in prepared:
+            saved = selected & finite
+            energy_m = np.bincount(month_idx[saved], weights=excess[saved], minlength=n_months)
+            cost_m = np.bincount(month_idx[saved], weights=cost_w[saved], minlength=n_months)
+            projected_m = current_m - np.divide(energy_m, hours_m, out=np.zeros(n_months), where=hours_m > 0)
+            saved_a = saved & in_annual
+            energy_a = float(excess[saved_a].sum())
+            cost_a = float(cost_w[saved_a].sum())
+            projected_a = current_a - energy_a / hours_a if hours_a else 0.0
             for scope in scopes:
-                totals = annual_totals[scope]
-                totals[0] += energy
-                totals[1] += cost
-                totals[2] += current_kw
-                totals[3] += projected_kw
-                totals[4] += current_kw if preventable else 0.0
-        for scope, by_month in monthly_totals.items():
+                # Critical Standby circuits never count towards building/floor/zone curfews.
+                counted = preventable or scope.startswith("circuit:")
+                m = monthly_totals[scope]
+                a = annual_totals[scope]
+                m[2] += current_m
+                a[2] += current_a
+                if counted:
+                    m[0] += energy_m
+                    m[1] += cost_m
+                    m[3] += projected_m
+                    a[0] += energy_a
+                    a[1] += cost_a
+                    a[3] += projected_a
+                else:
+                    m[3] += current_m
+                    a[3] += current_a
+                if preventable:
+                    m[4] += current_m
+                    a[4] += current_a
+        for scope, m in monthly_totals.items():
             annual = annual_totals[scope]
             result[scope].append({
                 "cutoff_hour": cutoff_hour,
                 "start_hour": start_hour if start_hour < 24 else start_hour - 24,
                 "end_hour": end_hour,
-                "annual_kwh": round(annual[0], 2),
-                "annual_cost_thb": round(annual[1], 2),
-                "annual_load_kw": round(annual[2], 3),
-                "annual_projected_load_kw": round(annual[3], 3),
-                "annual_preventable_load_kw": round(annual[4], 3),
-                "monthly": {m: {"kwh": round(v[0], 2), "cost_thb": round(v[1], 2),
-                                "load_kw": round(v[2], 3), "projected_load_kw": round(v[3], 3),
-                                "preventable_load_kw": round(v[4], 3)} for m, v in by_month.items()},
+                "weekends_off": weekends_off,
+                "annual_kwh": round(float(annual[0]), 2),
+                "annual_cost_thb": round(float(annual[1]), 2),
+                "annual_load_kw": round(float(annual[2]), 3),
+                "annual_projected_load_kw": round(float(annual[3]), 3),
+                "annual_preventable_load_kw": round(float(annual[4]), 3),
+                "monthly": {mo: {"kwh": round(float(m[0, i]), 2), "cost_thb": round(float(m[1, i]), 2),
+                                 "load_kw": round(float(m[2, i]), 3), "projected_load_kw": round(float(m[3, i]), 3),
+                                 "preventable_load_kw": round(float(m[4, i]), 3)} for i, mo in enumerate(month_list)},
             })
     return result
 

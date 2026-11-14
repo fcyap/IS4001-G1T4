@@ -3,7 +3,7 @@ import { api, getStoredGeminiKey, setStoredGeminiKey } from "../lib/api";
 import { useData } from "../lib/data";
 import { kwh } from "../lib/format";
 import { monthLabel, scopeLabel, useStore } from "../lib/store";
-import { buildEffectiveCircuitWindows, plannedScheduleSavings } from "../lib/plan";
+import { buildCopilotPlan, countPlanChanges, plannedScheduleSavings, useCurfewSettings } from "../lib/plan";
 
 interface ChatMessage {
   id: string;
@@ -42,10 +42,7 @@ export default function Copilot() {
   const startHour = useStore((s) => s.auditStartHour);
   const endHour = useStore((s) => s.auditEndHour);
   const month = useStore((s) => s.month);
-  const floorWindows = useStore((s) => s.auditFloorWindows);
-  const zoneWindows = useStore((s) => s.auditZoneWindows);
-  const circuitExemptions = useStore((s) => s.auditCircuitExemptions);
-  const circuitWindows = useStore((s) => s.auditCircuitWindows);
+  const curfew = useCurfewSettings();
 
   useEffect(() => {
     const onKeyChange = () => {
@@ -58,17 +55,7 @@ export default function Copilot() {
   }, []);
 
   const estimate = meta
-    ? plannedScheduleSavings(
-        meta,
-        scope,
-        startHour,
-        endHour,
-        month,
-        circuitExemptions,
-        circuitWindows,
-        floorWindows,
-        zoneWindows
-      )
+    ? plannedScheduleSavings(meta, scope, month, curfew)
     : null;
   const endFmt = String(endHour).padStart(2, "0");
   const currentSavingsKwh = estimate ? kwh(estimate.energyKwh) : "…";
@@ -78,11 +65,7 @@ export default function Copilot() {
   const activeScopeName = scopeLabel(scope);
   const activePeriodName = month ? monthLabel(month) : "Annual (Jul 2018–Jun 2019)";
   const hasGemini = !!meta?.ai_configured || !!storedKey;
-  const manualOverrideCount =
-    Object.keys(floorWindows).length +
-    Object.keys(zoneWindows).length +
-    Object.keys(circuitExemptions).filter((id) => circuitExemptions[id]).length +
-    Object.keys(circuitWindows).length;
+  const manualOverrideCount = countPlanChanges(curfew);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
@@ -121,15 +104,7 @@ export default function Copilot() {
     setTyping(true);
 
     try {
-      const exemptions = Object.keys(circuitExemptions).filter((id) => circuitExemptions[id]);
-      const effectiveCircuitWindows = buildEffectiveCircuitWindows(
-        meta,
-        startHour,
-        endHour,
-        floorWindows,
-        zoneWindows,
-        circuitWindows
-      );
+      const plan = buildCopilotPlan(meta, curfew);
       const res = await api.aiChat({
         message: clean,
         history: historyPayload,
@@ -138,8 +113,9 @@ export default function Copilot() {
         month,
         start_hour: startHour,
         end_hour: endHour,
-        exemptions,
-        circuit_windows: effectiveCircuitWindows,
+        weekends_off: curfew.weekendsOff,
+        kept_on: plan.keptOn,
+        circuit_windows: plan.windows,
         api_key: storedKey || null,
       });
 

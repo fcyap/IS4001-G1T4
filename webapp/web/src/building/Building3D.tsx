@@ -6,7 +6,7 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { ZoneInfo } from "../lib/api";
 import { AUDIT_CLASS_COLORS, auditValueColor, C, MEASURES } from "../lib/colors";
 import { replayValue, useData, zoneValue } from "../lib/data";
-import { simulatedZoneAuditMetrics } from "../lib/plan";
+import { simulatedZoneAuditMetrics, useCurfewSettings, useZoneSavings } from "../lib/plan";
 import { isAuditMeasure, monthLabel, useStore, zoneName } from "../lib/store";
 import { zoneUse } from "../lib/zones";
 import { FLOORS, FLOOR_H, LIFT, SLAB, ZONE_H, bandShape, coreShape, floorY, footprint, stairSpan } from "./layout";
@@ -22,12 +22,8 @@ function useZoneLook(z: ZoneInfo) {
   const mode = useStore((s) => s.mode);
   const measure = useStore((s) => s.measure);
   const month = useStore((s) => s.month);
-  const startHour = useStore((s) => s.auditStartHour);
-  const endHour = useStore((s) => s.auditEndHour);
-  const circuitExemptions = useStore((s) => s.auditCircuitExemptions);
-  const circuitWindows = useStore((s) => s.auditCircuitWindows);
-  const floorWindows = useStore((s) => s.auditFloorWindows);
-  const zoneWindows = useStore((s) => s.auditZoneWindows);
+  const curfew = useCurfewSettings();
+  const zoneSaved = useZoneSavings(meta, month, curfew);
   const t = useStore((s) => s.replay.t);
   const after = useStore((s) => s.replay.after);
   const home = useStore((s) => s.topic === "home");
@@ -41,7 +37,7 @@ function useZoneLook(z: ZoneInfo) {
 
     const isWhatIf = mode === "whatif";
     const sim = isWhatIf
-      ? simulatedZoneAuditMetrics(meta, audit, startHour, endHour, month, circuitExemptions, circuitWindows, floorWindows, zoneWindows)
+      ? simulatedZoneAuditMetrics(meta, audit, month, curfew)
       : null;
 
     if (measure === "audit_load") {
@@ -66,6 +62,21 @@ function useZoneLook(z: ZoneInfo) {
       return { value, color: auditValueColor(value, max), display: `${fmtKw(value)} kW mean after-hours load · ${period}${partial}`, hasData: true };
     }
 
+    // What-If: colour by what the curfew plan saves in each zone. (Remaining preventable waste is 0 almost
+    // everywhere under the default curfew, which would paint the whole building one colour.)
+    if (isWhatIf) {
+      const pickSaved = (v?: { kwh: number; thb: number }) => (measure === "audit_cost" ? v?.thb : v?.kwh) ?? 0;
+      const saved = pickSaved(zoneSaved.get(z.id));
+      const maxSaved = Math.max(...[...zoneSaved.values()].map(pickSaved), 1);
+      return {
+        value: saved,
+        color: auditValueColor(saved, maxSaved),
+        display: saved > 0
+          ? `${fmt(saved, measure === "audit_cost" ? "THB" : "kWh")} saved by the curfew plan`
+          : `Nothing saved here under the plan · ${audit.classification}`,
+        hasData: true,
+      };
+    }
     const monthlyValue = measure === "audit_cost" ? audit.monthly[month ?? ""]?.cost_thb : audit.monthly[month ?? ""]?.surplus_kwh;
     const rawValue = month ? monthlyValue ?? null : measure === "audit_cost" ? audit.annual_cost_thb : audit.annual_surplus_kwh;
     if (rawValue === null) return { value: null, color: C.nodata, display: `No circuit readings · ${monthLabel(month!)}`, hasData: false };

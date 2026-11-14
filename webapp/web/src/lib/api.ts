@@ -71,7 +71,7 @@ export interface Meta {
   zones: ZoneInfo[];
   floor_baselines?: FloorBaseline[];
   energy_audit: EnergyAuditZone[];
-  afterhours_timing: Record<string, { cutoff_hour: number; start_hour?: number; end_hour?: number; annual_kwh: number; annual_cost_thb: number;
+  afterhours_timing: Record<string, { cutoff_hour: number; start_hour?: number; end_hour?: number; weekends_off?: boolean; annual_kwh: number; annual_cost_thb: number;
     annual_load_kw: number; annual_projected_load_kw: number; annual_preventable_load_kw: number;
     monthly: Record<string, { kwh: number; cost_thb: number; load_kw: number;
       projected_load_kw: number; preventable_load_kw: number }> }[]>;
@@ -133,6 +133,24 @@ export interface ScenarioBody {
 export interface CircuitWindowOverride {
   start_hour: number;
   end_hour: number;
+  /** true: also off all day on weekends & public holidays; false: the same hours every day. Inherited when absent. */
+  weekends_off?: boolean;
+}
+
+/** What happens to a circuit after hours. The K-Means class gives the recommendation; the FM can change it. */
+export type CircuitMode = "keep_on" | "curfew";
+
+/** One exception to the building-wide default. The most specific exception wins: circuit > zone > floor. */
+export interface CurfewException {
+  /** "F1", "F1:z4" or "F1:z4:Floor1_z4_Light(kW)"; one exception per target. */
+  id: string;
+  floor: number;
+  zone?: string;
+  circuit?: string;
+  mode: "keep_on" | "hours";
+  start_hour: number;
+  end_hour: number;
+  weekends_off: boolean;
 }
 
 export interface AIChatRequest {
@@ -143,7 +161,8 @@ export interface AIChatRequest {
   month?: string | null;
   start_hour: number;
   end_hour: number;
-  exemptions: string[];
+  weekends_off: boolean;
+  kept_on: string[];
   circuit_windows?: Record<string, CircuitWindowOverride>;
   api_key?: string | null;
 }
