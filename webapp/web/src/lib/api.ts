@@ -17,7 +17,19 @@ export interface ZoneInfo {
   kw_per_c: number | null; kw_per_c_source: string | null; pct_per_c: number | null;
   moisture_per_c: number | null;
   baseline: BaselineFit | null;
+  /** Median office-hour air temperature (zone_summary.csv); null without a sensor. */
+  median_temp_c?: number | null;
+  /** The recommended rule's yearly outcome (recommendations_by_zone.csv); null when the zone has no AC slope. */
+  rule?: ZoneRule | null;
+  /** Jul–Sep 2018 vs Jul–Sep 2019, the only months with sensor data in both years. */
+  jul_sep?: Record<"2018" | "2019", JulSepYear> | null;
 }
+export interface ZoneRule {
+  annual_kwh_saved: number; typical_raise_c: number;
+  pct_too_cool_before: number; pct_too_cool_after: number; pct_comfortable_after: number; pct_humid_after: number;
+  action: string;
+}
+export interface JulSepYear { periods: number; too_cool: number; median_temp_c: number; mean_out_temp_c: number }
 
 export type AuditClassification = "Preventable Waste" | "Critical Standby" | "Mixed";
 export interface EnergyAuditCircuit {

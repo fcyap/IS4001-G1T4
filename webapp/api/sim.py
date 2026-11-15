@@ -76,9 +76,17 @@ class Simulator:
         self.inspect = np.isin(self.zone_id, list(inspect))
         self.w0 = qc.humidity_ratio(self.temp, self.rh)
         self._pmv0 = p["pmv"].to_numpy(float)              # today's PMV, from qb_comfort_pmv
+        # Today's comfort and humidity labels as qb_comfort_pmv classified them at full precision.
+        # The saved PMV is rounded to 3 decimals, so re-classifying it moves rows sitting at ±0.500.
+        self._cool0 = (p["comfort"] == "too cool").to_numpy()
+        self._warm0 = (p["comfort"] == "too warm").to_numpy()
+        self._humid0 = p["humid"].astype(str).str.lower().eq("true").to_numpy()
         self.before = self._state(np.zeros(len(p)))
         rule = store.monthly.assign(zid="F" + store.monthly["floor"].astype(str) + ":" + store.monthly["zone"])
         self.rule_raise = dict(zip(zip(rule["zid"], rule["month"]), rule["recommended_raise_c"]))
+        # Rows in a zone-month that qb_setpoint_sim made a recommendation for (enough periods).
+        # Annual savings are scaled up from these rows only, as recommendations_by_zone.csv does.
+        self.in_rule = np.array([k in self.rule_raise for k in zip(self.zone_id, self.month)])
         self._cache: OrderedDict[Scenario, dict] = OrderedDict()
         self._cache_size = cache_size
 
@@ -93,10 +101,13 @@ class Simulator:
             pmv[ok] = qc.pmv_ppd(t[ok], t[ok], rh[ok])[0]
         # Raise: save up to the AC in use. Lower: negative saving, up to the zone's capacity.
         saved = np.clip(self.kw_per_c * delta, -(self.ac_cap - self.ac), self.ac)
+        # Rows the change leaves alone keep the notebook's labels; changed rows are classified here.
+        cool = np.where(ok, pmv < qc.PMV_LOW, self._cool0)
+        warm = np.where(ok, pmv > qc.PMV_HIGH, self._warm0)
+        humid = np.where(ok, rh > qc.RH_LIMIT, self._humid0)
         return {"delta": delta, "temp": t, "rh": rh, "pmv": pmv,
-                "cool": pmv < qc.PMV_LOW, "warm": pmv > qc.PMV_HIGH,
-                "comf": (pmv >= qc.PMV_LOW) & (pmv <= qc.PMV_HIGH),
-                "humid": rh > qc.RH_LIMIT, "saved": saved}
+                "cool": cool, "warm": warm, "comf": ~cool & ~warm & ~np.isnan(pmv),
+                "humid": humid, "saved": saved}
 
     def _delta(self, sc: Scenario) -> np.ndarray:
         if sc.mode == "rule":
@@ -158,7 +169,12 @@ class Simulator:
             before, after = self._summ(a, m), self._summ(b, m)
             d = b["delta"][m]
             breach, breach_months = self._guardrail(a, b, m)
-            after["annual_kwh_saved"] = round(after["saved_kwh"] / after["periods"] * qc.OFFICE_PERIODS_PER_YEAR, 0)
+            # As qb_setpoint_sim: saved kWh over the recommendation months, per period, times a year of
+            # office periods. Zones with no recommendation months fall back to all their periods.
+            mr = m & self.in_rule
+            n_annual = int(mr.sum()) or int(m.sum())
+            saved_annual = (b["saved"][mr].sum() * qc.PERIOD_HOURS) if mr.any() else after["saved_kwh"]
+            after["annual_kwh_saved"] = round(float(saved_annual) / n_annual * qc.OFFICE_PERIODS_PER_YEAR, 0)
             zones.append({
                 "id": zid, "raise_c": round(float(d.mean()), 2), "raise_max": float(d.max()),
                 "raise_min": float(d.min()),

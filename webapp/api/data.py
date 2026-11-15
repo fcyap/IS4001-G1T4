@@ -79,7 +79,35 @@ def _read_preds(folder: Path) -> pd.DataFrame:
         columns=["timestamp", "zone", "split", "ac_kw", "pred_chosen", "floor"])
 
 
-def _zone_registry(zone_summary, slopes, inspection, baseline, compliance) -> list[dict]:
+def _rule_by_zone(by_zone: pd.DataFrame) -> dict:
+    """(floor, zone) -> the recommended rule's yearly outcome, from recommendations_by_zone.csv."""
+    return {(int(r.floor), r.zone): {
+        "annual_kwh_saved": float(r.annual_kwh_saved), "typical_raise_c": float(r.typical_raise_c),
+        "pct_too_cool_before": float(r.pct_too_cool_before), "pct_too_cool_after": float(r.pct_too_cool_after),
+        "pct_comfortable_after": float(r.pct_comfortable_after), "pct_humid_after": float(r.pct_humid_after),
+        "action": str(r.action),
+    } for r in by_zone.itertuples()}
+
+
+def _year_compare(pmv: pd.DataFrame) -> dict:
+    """(floor, zone) -> office periods and too-cool periods in Jul-Sep 2018 and Jul-Sep 2019, plus the
+    median zone temperature and mean outdoor temperature. The only months with sensor data in both years."""
+    s = pmv[pmv["timestamp"].dt.month.isin([7, 8, 9])]
+    out = {}
+    for (floor, zone), z in s.groupby(["floor", "zone"]):
+        years = {}
+        for year, y in z.groupby(z["timestamp"].dt.year):
+            years[str(year)] = {"periods": int(len(y)), "too_cool": int((y["comfort"] == "too cool").sum()),
+                                "median_temp_c": round(float(y["temp_c"].median()), 2),
+                                "mean_out_temp_c": round(float(y["out_temp_c"].mean()), 2)}
+        if {"2018", "2019"} <= years.keys():
+            out[(int(floor), zone)] = years
+    return out
+
+
+def _zone_registry(zone_summary, slopes, inspection, baseline, compliance, rule=None, year_cmp=None) -> list[dict]:
+    rule, year_cmp = rule or {}, year_cmp or {}
+    median_temp = {(r.floor, r.zone): round(float(r.median_temp_c), 2) for r in zone_summary.itertuples()}
     sensor = {(r.floor, r.zone) for r in zone_summary.itertuples()}
     slope = {(r.floor, r.zone): r for r in slopes.itertuples()}
     inspect = {(r.floor, r.zone): r.reason for r in inspection.itertuples()}
@@ -94,9 +122,9 @@ def _zone_registry(zone_summary, slopes, inspection, baseline, compliance) -> li
                 status, note = "data", None
             elif floor == 1:
                 status, note = "nodata", ("AC metered but no temperature sensor on Floor 1" if has_ac
-                                          else "lighting and plugs only, no sensor")
+                                          else "No AC and no temperature sensor")
             else:
-                status, note = "nodata", "lighting and plugs only (no AC, no sensor)"
+                status, note = "nodata", "No AC and no temperature sensor"
             b = base.get(key)
             s = slope.get(key)
             out.append({
@@ -109,6 +137,9 @@ def _zone_registry(zone_summary, slopes, inspection, baseline, compliance) -> li
                 "pct_per_c": None if s is None else round(float(s.saving_pct_per_c), 2),
                 "moisture_per_c": None if s is None else round(float(s.moisture_g_per_kg_per_c), 3),
                 "baseline": None if b is None else _baseline_entry(b, compliance, "zone", floor, zone),
+                "median_temp_c": median_temp.get(key),
+                "rule": rule.get(key),
+                "jul_sep": year_cmp.get(key),
             })
     return out
 
@@ -411,7 +442,9 @@ def load() -> Store:
         pmv=pmv, heatmap=heatmap, inspection=inspection, slopes=slopes, monthly=monthly,
         preds=_read_preds(qc.BASELINE_DIR), floor_preds=_read_preds(qc.BASELINE_DIR / "by_floor"),
         floor_baselines=_floor_baselines(compliance),
-        registry=_zone_registry(zone_summary, slopes, inspection, baseline, compliance),
+        registry=_zone_registry(zone_summary, slopes, inspection, baseline, compliance,
+                                rule=_rule_by_zone(pd.read_csv(qc.SETPOINT_DIR / "recommendations_by_zone.csv")),
+                                year_cmp=_year_compare(pmv)),
         energy_audit=_energy_audit(),
         afterhours_timing=_afterhours_timing(),
         months=sorted(pmv["month"].unique()), office_days=office_days)

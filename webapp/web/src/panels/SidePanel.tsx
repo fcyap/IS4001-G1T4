@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type BaselineFit, type LoadPattern, type Summary, type ZoneInfo, type ZoneResult } from "../lib/api";
 import { AUDIT_CLASS_COLORS, auditValueColor, C, MEASURES } from "../lib/colors";
 import { acKw, replayValue, rollup, useData, useFetch, zoneValue } from "../lib/data";
-import { kwh, n0, n1, pmvTxt, signedC } from "../lib/format";
+import { acThb, kwh, n0, n1, pmvTxt, signedC } from "../lib/format";
 import { isAuditMeasure, monthLabel, scenarioBody, scopeLabel, useStore, zoneId, zoneName, type AuditMeasure, type MapMeasure } from "../lib/store";
 import { zoneLabel, zoneUse } from "../lib/zones";
 import { HeatMap, Histogram, LoadChart, Sparkline } from "./Charts";
@@ -109,7 +109,8 @@ function ScopeHeader({ zones }: { zones: ZoneInfo[] }) {
           ? audit ? `${audit.circuit_count} circuits · ${audit.preventable_count} preventable, ${audit.critical_count} critical standby`
             : "No circuit data for this zone."
           : z?.status === "nodata" ? z.note : z?.has_ac ? "Temperature, humidity and AC metered." : "Temperature and humidity only, no AC meter."}</p>
-        {use && <p className="zone-lever">{use.lever}</p>}
+        {auditLayer ? use && <p className="zone-lever">{use.lever}</p>
+          : z?.has_ac && z.has_sensor && <p className="zone-lever">Raise the AC setpoint where office time runs too cool, as long as humidity stays in check.</p>}
         <div className="badges">
           {use && <span className="badge">{use.kindLabel}</span>}
           {auditLayer && audit && measure !== "audit_load" && <span className="badge" style={{ color: AUDIT_CLASS_COLORS[audit.classification], borderColor: AUDIT_CLASS_COLORS[audit.classification] }}>{audit.classification}</span>}
@@ -145,7 +146,7 @@ function OccupantComfortSection({ results, zones, zone }: { results: ZoneResult[
 
   return (
     <Section title="Occupant Comfort" collapsible={true} defaultOpen={false}>
-      <div className="stats">
+      <div className="stats stats-5">
         <Stat
           label="Indoor Air"
           value={n1(a.mean_temp_c)}
@@ -178,6 +179,8 @@ function OccupantComfortSection({ results, zones, zone }: { results: ZoneResult[
             isImprovement: b.pct_comfortable > a.pct_comfortable // More time comfortable is better
           } : null}
         />
+        <Stat label="Mean PMV" value={pmvTxt(a.mean_pmv)} after={w ? pmvTxt(b.mean_pmv) : null}
+          hint="Predicted Mean Vote, ISO 7730: comfortable is −0.5 to +0.5, below is too cool" />
       </div>
       <ComfortMix results={results} />
       {zone && zone.status === "data" && <ZoneDetailSection zone={zone} result={results[0]} />}
@@ -275,7 +278,6 @@ function ComfortMix({ results }: { results: ZoneResult[] }) {
       </div>
       <p className="note">
         Humid (RH above 65 %): {n0(a.pct_humid)} % of office time{mode === "whatif" ? `, ${n0(b.pct_humid)} % after` : ""}.
-        Mean PMV {pmvTxt(a.mean_pmv)}{mode === "whatif" ? ` → ${pmvTxt(b.mean_pmv)}` : ""}.
       </p>
     </Section>
   );
@@ -311,12 +313,19 @@ function WhatIf({ results, zones }: { results: ZoneResult[]; zones: ZoneInfo[] }
 
   // [label, today, after, unit, lower is better, guarded: a rise only counts as bad if a zone breaks its limit]
   // The 10 % too-warm limit applies per raised zone and month, not to this pooled share.
-  const rows: [string, number, number, string, boolean, boolean?][] = [
-    ["Comfortable", a.pct_comfortable, b.pct_comfortable, "%", false],
-    ["Too cool", a.pct_too_cool, b.pct_too_cool, "%", true],
-    ["Too warm", a.pct_too_warm, b.pct_too_warm, "%", true, true],
-    ["Humid (RH > 65 %)", a.pct_humid, b.pct_humid, "%", true, true],
-    ["Mean zone temperature", a.mean_temp_c, b.mean_temp_c, "°C", false],
+  type BaRow = [string, number, number, string, boolean, boolean?];
+  // Office time: how the hours split by thermal comfort. Indoor conditions: what the air is like.
+  const groups: [string, BaRow[]][] = [
+    ["Office Time", [
+      ["Comfortable", a.pct_comfortable, b.pct_comfortable, "%", false],
+      ["Too cool", a.pct_too_cool, b.pct_too_cool, "%", true],
+      ["Too warm", a.pct_too_warm, b.pct_too_warm, "%", true, true],
+    ]],
+    ["Indoor Conditions", [
+      ["Mean PMV", a.mean_pmv, b.mean_pmv, "PMV", false],
+      ["Mean zone temperature", a.mean_temp_c, b.mean_temp_c, "°C", false],
+      ["Humid (RH > 65 %)", a.pct_humid, b.pct_humid, "%", true, true],
+    ]],
   ];
 
   return (
@@ -351,29 +360,30 @@ function WhatIf({ results, zones }: { results: ZoneResult[]; zones: ZoneInfo[] }
         <div className="wi-hero">
           <span className="stat-label">{extra ? "Extra AC energy" : "AC energy saved"} {month ? `in ${monthLabel(month)}` : "per year"}</span>
           <span className={`big ${extra ? "bad" : ""}`}>{kwh(Math.abs(saved))}</span>
-          <span className="sub">{n1(pctSaved)} % {extra ? "more" : "less"} office-hour AC</span>
+          <span className="sub">{n1(pctSaved)} % {extra ? "more" : "less"} office-hour AC · {acThb(Math.abs(saved))} excl. VAT</span>
         </div>
 
         <table className="tbl ba">
-          <thead><tr><th>Office time</th><th>Today</th><th>After</th><th>Change</th></tr></thead>
-          <tbody>
+          {groups.map(([title, rows], gi) => <tbody key={title}>
+            <tr className="ba-head"><th>{title}</th>{gi === 0 ? <><th>Today</th><th>After</th><th>Change</th></> : <><th /><th /><th /></>}</tr>
             {rows.map(([label, before, after, unit, lowerBetter, guarded]) => {
               const d = after - before;
               const pct = unit === "%";
-              const worse = (d < 0) !== lowerBetter;
+              // PMV is better the closer it sits to 0, from either side.
+              const worse = unit === "PMV" ? Math.abs(after) > Math.abs(before) : (d < 0) !== lowerBetter;
               const tone = Math.abs(d) < (pct ? 0.5 : 0.05) || (worse && guarded && !breaches.length) ? ""
                 : worse ? "bad" : "good";
-              const fmt = (v: number) => pct ? `${n0(v)} %` : `${n1(v)} °C`;
+              const fmt = (v: number) => pct ? `${n0(v)} %` : unit === "PMV" ? pmvTxt(v) : `${n1(v)} °C`;
               return (
                 <tr key={label}>
                   <td>{label}</td>
                   <td>{fmt(before)}</td>
                   <td><b>{fmt(after)}</b></td>
-                  <td className={unit === "°C" ? "" : tone}>{`${d > 0 ? "+" : d < 0 ? "−" : ""}${pct ? n0(Math.abs(d)) + " pts" : n1(Math.abs(d)) + " °C"}`}</td>
+                  <td className={unit === "°C" ? "" : tone}>{unit === "PMV" ? pmvTxt(d) : `${d > 0 ? "+" : d < 0 ? "−" : ""}${pct ? n0(Math.abs(d)) + " pts" : n1(Math.abs(d)) + " °C"}`}</td>
                 </tr>
               );
             })}
-          </tbody>
+          </tbody>)}
         </table>
 
         <div className="wi-bars">
@@ -488,8 +498,6 @@ function WhatIfDetail({ results, zones, zone }: { results: ZoneResult[]; zones: 
           <Stat label="Cooling EUI (Office Hours)" value={n1(eui.before)} after={n1(eui.after)} unit="kWh/m²/year"
             hint={`Office-hours AC per year, per m² of ${scope.floor === undefined ? "the building (11,700 m²)" : `Floor ${scope.floor}`}`}
             change={eui.before ? { value: ((eui.after - eui.before) / eui.before) * 100, type: "pct", isImprovement: eui.after < eui.before } : null} />
-          <Stat label="Mean PMV" value={pmvTxt(rollup(results, false).mean_pmv)} after={pmvTxt(rollup(results, true).mean_pmv)}
-            hint="Comfortable is −0.5 to +0.5" />
         </div>
       )}
       <Load results={results} />
@@ -688,11 +696,11 @@ function Alerts({ zones, results }: { zones: ZoneInfo[]; results: ZoneResult[] }
 
 // --- Charts sections --------------------------------------------------------------------------
 const LOAD_NOTE: Record<NonNullable<LoadPattern["level"]>, string> = {
-  zone: "Zone baseline from weather, the zone's lighting and plug use, hour, weekday and holidays, trained Jul 2018–Jun 2019.",
-  floor: "Floor baseline (whole-floor AC) from weather, the floor's lighting and plug use, hour, weekday and holidays, "
+  zone: "Zone AC baseline from weather, internal heat gains (occupancy and equipment), hour, weekday and holidays, trained Jul 2018–Jun 2019.",
+  floor: "Floor AC baseline (whole-floor AC) from weather, internal heat gains (occupancy and equipment), hour, weekday and holidays, "
     + "trained Jul 2018–Jun 2019. This is the baseline to verify savings against.",
   building: "Sum of the floor baselines (whole-floor AC on Floors 2–7), trained Jul 2018–Jun 2019.",
-  zones: "Sum of the zone baselines, from weather, lighting and plug use, hour, weekday and holidays, trained Jul 2018–Jun 2019.",
+  zones: "Sum of the zone AC baselines, from weather, internal heat gains, hour, weekday and holidays, trained Jul 2018–Jun 2019.",
 };
 
 /** With `results` (what-if), also draws actual AC minus the simulated saving, in the weeks that have sensors. */
@@ -826,8 +834,11 @@ export default function SidePanel() {
 
   const zones = meta.zones.filter((z) =>
     (scope.floor === undefined || z.floor === scope.floor) && (!scope.zone || z.zone === scope.zone));
-  const results = zones.map((z) => byId.get(z.id)).filter((r): r is ZoneResult => !!r);
   const zone = scope.zone ? zones[0] : null;
+  // Floor and building figures count AC zones only: a stairwell (zone 3) has no AC, so no setpoint
+  // can change it (only Floor 2's has a sensor). Opening that zone still shows its own readings.
+  const results = zones.filter((z) => zone || z.has_ac)
+    .map((z) => byId.get(z.id)).filter((r): r is ZoneResult => !!r);
   const auditZone = zone ? auditById.get(zone.id) : undefined;
 
   // Building and floor views lead with a summary; the detail stays one click away.

@@ -155,6 +155,9 @@ select.mini { padding: 3px 24px 3px 8px; font-size: var(--t-xs); }
 .link:hover { text-decoration: underline; }
 
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 16px 18px; margin-bottom: 20px; }
+/* Five stats on one row (occupant comfort); they stack again on narrow screens. */
+.stats-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px 12px; }
+@media (max-width: 520px) { .stats-5 { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); } }
 .stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .stat-label { font-size: var(--t-xs); color: var(--muted); display: block; }
 .stat-value { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
@@ -203,6 +206,7 @@ input[type="range"] { accent-color: var(--warm); width: 100%; }
 .wi-hero .sub { display: block; font-size: var(--t-xs); color: var(--muted); }
 .tbl.ba { margin-top: 14px; font-size: var(--t-s); }
 .tbl.ba th:not(:first-child), .tbl.ba td:not(:first-child) { text-align: right; }
+.tbl.ba tbody + tbody .ba-head th { padding-top: 18px; }
 .tbl.ba td.good { color: var(--comfy); }
 .tbl.ba td.bad { color: color-mix(in srgb, var(--alert) 80%, white); }
 .wi-bars { margin-top: 14px; }
@@ -253,6 +257,7 @@ input[type="range"] { accent-color: var(--warm); width: 100%; }
 /* Building / floor at a glance */
 .glance-lead { margin: -6px 0 18px; font-size: var(--t-s); color: var(--ink-2); max-width: 62ch; }
 .glance-lead b { color: var(--ink); font-weight: 600; }
+.stat-note { margin: 4px 0 0; font-size: var(--t-xs); color: var(--muted); }
 .glance-h { margin: 18px 0 8px; font-size: var(--t-s); font-weight: 600; color: var(--ink-2); }
 .rank { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .rank-row { width: 100%; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(40px, 1fr) auto; align-items: center; gap: 10px;
@@ -263,6 +268,7 @@ button.rank-row:hover { background: var(--panel-2); border-color: var(--line-2);
 .rank-name small, .rank-val small { color: var(--muted); font-size: var(--t-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rank-bar { height: 8px; border-radius: 4px; background: var(--nodata); overflow: hidden; }
 .rank-bar i { display: block; height: 100%; border-radius: 4px; transition: width 0.45s ease; }
+.rank-cool .rank-row { grid-template-columns: minmax(0, 1.4fr) minmax(40px, 1fr) 165px; }
 .rank-val { display: flex; flex-direction: column; align-items: flex-end; font-size: var(--t-s); }
 
 /* Recommended plan (What-If Simulation) */
