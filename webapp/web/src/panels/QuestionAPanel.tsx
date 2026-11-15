@@ -186,9 +186,11 @@ function CurfewPlan() {
     (isBuilding || a.floor === scope.floor) && (!isZone || a.zone === scope.zone));
   const building = plannedScheduleSavings(meta, {}, month, curfew);
   const shown = isBuilding ? building : plannedScheduleSavings(meta, scope, month, curfew);
-  const preventableKwh = scopeAudits.reduce((sum, a) => sum + (month ? a.monthly[month]?.surplus_kwh ?? 0 : a.annual_surplus_kwh), 0);
-  const capturePct = preventableKwh > 0
-    ? Math.min(100, Math.round(((shown.energyKwh - shown.beyondRecommendationKwh) / preventableKwh) * 100))
+  // Two different numbers: the curfew saving is compared with the theoretical maximum a full curfew could save
+  // (lights fully off, plugs down to standby), not with the waste above the baseload shown on Today.
+  const curfewMaxKwh = scopeAudits.reduce((sum, a) => sum + (month ? a.monthly[month]?.curfew_max_kwh ?? 0 : a.annual_curfew_max_kwh), 0);
+  const capturePct = curfewMaxKwh > 0
+    ? Math.min(100, Math.round(((shown.energyKwh - shown.beyondRecommendationKwh) / curfewMaxKwh) * 100))
     : 0;
   const relevantExceptions = isBuilding
     ? curfew.exceptions
@@ -223,7 +225,7 @@ function CurfewPlan() {
           <span className="big">{kwh(shown.energyKwh)}</span>
           <span className="sub">
             {scopeName}, {periodLabel}
-            {preventableKwh > 0 ? ` · ${capturePct}% of preventable waste` : " · no preventable waste here"}
+            {curfewMaxKwh > 0 ? ` · ${capturePct}% of the theoretical maximum` : " · no preventable waste here"}
             {shown.beyondRecommendationKwh > 0 ? ` · ${kwh(shown.beyondRecommendationKwh)} from circuits the model recommends keeping on` : ""}
           </span>
         </div>
@@ -368,7 +370,7 @@ function ZoneAtAGlance({ audit, measure }: { audit: EnergyAuditZone; measure: Ma
           label="Preventable Waste"
           value={kwh(kwhVal)}
           unit={thb(thbVal)}
-          hint="Above P2.5 dynamic baselines, excl. VAT"
+          hint="Above P2.5 dynamic baseloads, excl. VAT"
         />
         <Stat
           label="Unoccupied Load"
@@ -381,7 +383,7 @@ function ZoneAtAGlance({ audit, measure }: { audit: EnergyAuditZone; measure: Ma
       <div className="zone-side-popup-chart">
         <h3 className="glance-h">{isLoad ? "Monthly After-Hours Load · kW" : "Monthly Preventable Energy · kWh"}</h3>
         {isLoad
-          ? <AfterHoursLoadChart monthly={audit.monthly} selectedMonth={month} baselineKw={totalBaseload} />
+          ? <AfterHoursLoadChart monthly={audit.monthly} selectedMonth={month} baseloadKw={totalBaseload} />
           : <PreventableEnergyChart monthly={audit.monthly} selectedMonth={month} />}
       </div>
 

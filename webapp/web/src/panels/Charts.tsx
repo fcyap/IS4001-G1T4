@@ -66,8 +66,8 @@ export function PreventableEnergyChart({ monthly, selectedMonth }: {
   return <ReactECharts option={option} style={{ height: 176 }} notMerge />;
 }
 
-export function AfterHoursLoadChart({ monthly, selectedMonth, baselineKw }: {
-  monthly: Record<string, EnergyAuditPeriod>; selectedMonth: string | null; baselineKw: number;
+export function AfterHoursLoadChart({ monthly, selectedMonth, baseloadKw }: {
+  monthly: Record<string, EnergyAuditPeriod>; selectedMonth: string | null; baseloadKw: number;
 }) {
   const months = Object.keys(monthly).sort();
   const option = useMemo(() => ({
@@ -79,9 +79,9 @@ export function AfterHoursLoadChart({ monthly, selectedMonth, baselineKw }: {
       const index = items[0]?.dataIndex ?? 0;
       const month = months[index];
       const period = monthly[month];
-      if (!period || period.unocc_mean_kw === null) return `${monthLabel(month)}<br/><b>No circuit readings</b><br/>Circuit baseload ${baselineKw.toFixed(3)} kW`;
+      if (!period || period.unocc_mean_kw === null) return `${monthLabel(month)}<br/><b>No circuit readings</b><br/>Circuit baseload ${baseloadKw.toFixed(3)} kW`;
       const energyText = period.surplus_kwh === null ? "Preventable energy unavailable" : `${Math.round(period.surplus_kwh).toLocaleString()} kWh preventable`;
-      return `${monthLabel(month)}<br/><b>${period.unocc_mean_kw.toFixed(3)} kW mean after-hours load</b><br/>Circuit baseload ${baselineKw.toFixed(3)} kW<br/>${energyText}<br/>Coverage ${period.load_coverage_pct}%`;
+      return `${monthLabel(month)}<br/><b>${period.unocc_mean_kw.toFixed(3)} kW mean after-hours load</b><br/>Circuit baseload ${baseloadKw.toFixed(3)} kW<br/>${energyText}<br/>Coverage ${period.load_coverage_pct}%`;
     } },
     xAxis: { type: "category", data: months, ...axis, splitLine: { show: false },
       axisLabel: { ...axis.axisLabel, interval: Math.max(1, Math.ceil(months.length / 9)), fontSize: 10,
@@ -93,11 +93,11 @@ export function AfterHoursLoadChart({ monthly, selectedMonth, baselineKw }: {
         data: months.map((month) => ({ value: monthly[month]?.unocc_mean_kw ?? null,
         itemStyle: { color: month === selectedMonth ? "#f49a4b" : "#5fa8e8", borderRadius: [3, 3, 0, 0] } })),
       },
-      { name: "Baseload", type: "line", data: months.map((month) => monthly[month]?.unocc_mean_kw == null ? null : baselineKw),
+      { name: "Baseload", type: "line", data: months.map((month) => monthly[month]?.unocc_mean_kw == null ? null : baseloadKw),
         symbol: "none", connectNulls: false, lineStyle: { color: "#f3bf65", width: 2, type: "dashed" },
-        endLabel: { show: true, formatter: `${baselineKw.toFixed(3)} kW`, color: "#f3bf65", fontSize: 10, distance: 3 } },
+        endLabel: { show: true, formatter: `${baseloadKw.toFixed(3)} kW`, color: "#f3bf65", fontSize: 10, distance: 3 } },
     ],
-  }), [monthly, months, selectedMonth, baselineKw]);
+  }), [monthly, months, selectedMonth, baseloadKw]);
   return <ReactECharts option={option} style={{ height: 196 }} notMerge />;
 }
 

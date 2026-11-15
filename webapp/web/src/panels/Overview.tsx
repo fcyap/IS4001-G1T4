@@ -88,7 +88,7 @@ export default function Overview({ zones }: { zones: ZoneInfo[] }) {
       <div className="stats">
         {byWaste && (
           <Stat label="After-hours Waste" value={kwh(all.kwh)} unit={thb(all.thb)}
-            hint="Above circuit baselines, excl. VAT" />
+            hint="Above circuit baseloads, excl. VAT" />
         )}
         {!byWaste && (
           <Stat label="Office Time Too Cool" value={all.hasComfort ? n0(all.tooCool) : "–"} unit="%"

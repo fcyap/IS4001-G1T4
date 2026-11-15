@@ -571,4 +571,5 @@ button.rank-row:hover { background: var(--panel-2); border-color: var(--line-2);
 .exception-add select.mini { max-width: 100%; }
 .plan-scope-saving { margin: 8px 0 12px; }
 
-.note.curfew-default-summary { margin-top: 16px; }
+.note.curfew-default-summary { margin-top: 16px; margin-bottom: 20px; }
+

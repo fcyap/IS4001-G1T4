@@ -30,13 +30,21 @@ export interface EnergyAuditCircuit {
   offhours_cv?: number;
   unocc_mean_kw: number | null; baseload_kw: number;
   annual_unocc_hours: number; annual_expected_unocc_hours: number;
+  /** WASTE: after-hours load above the dynamic P2.5 baseload (lights and plugs). */
   annual_surplus_kwh: number;
   annual_cost_thb: number;
+  /** CURFEW MAXIMUM: what a full curfew would save (lights fully off, plugs down to their baseload). */
+  annual_curfew_max_kwh: number;
+  annual_curfew_max_cost_thb: number;
   monthly: Record<string, EnergyAuditPeriod>;
 }
 export interface EnergyAuditPeriod {
+  /** Waste above the baseload. */
   surplus_kwh: number | null;
   cost_thb: number | null;
+  /** Theoretical maximum a full curfew would save. */
+  curfew_max_kwh: number | null;
+  curfew_max_cost_thb: number | null;
   unocc_mean_kw: number | null;
   unocc_hours: number; expected_unocc_hours: number;
   energy_coverage_pct: number; load_coverage_pct: number;
@@ -46,6 +54,7 @@ export interface EnergyAuditZone {
   classification: AuditClassification;
   circuit_count: number; preventable_count: number; critical_count: number;
   annual_surplus_kwh: number; annual_cost_thb: number; unocc_mean_kw: number | null;
+  annual_curfew_max_kwh: number; annual_curfew_max_cost_thb: number;
   annual_unocc_hours: number; annual_expected_unocc_hours: number;
   annual_energy_coverage_pct: number; annual_load_coverage_pct: number;
   monthly: Record<string, EnergyAuditPeriod>;

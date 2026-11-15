@@ -178,11 +178,11 @@ export function getCircuitPlanInfo(
   if (mode === "curfew") {
     const scen = findTimingScenario(meta?.afterhours_timing[`circuit:${cid}`], window.start_hour, window.end_hour, window.weekends_off);
     savedKwh = month
-      ? (scen?.monthly[month]?.kwh ?? circuit.monthly[month]?.surplus_kwh ?? 0)
-      : (scen?.annual_kwh ?? circuit.annual_surplus_kwh);
+      ? (scen?.monthly[month]?.kwh ?? circuit.monthly[month]?.curfew_max_kwh ?? 0)
+      : (scen?.annual_kwh ?? circuit.annual_curfew_max_kwh);
     savedThb = month
-      ? (scen?.monthly[month]?.cost_thb ?? circuit.monthly[month]?.cost_thb ?? 0)
-      : (scen?.annual_cost_thb ?? circuit.annual_cost_thb);
+      ? (scen?.monthly[month]?.cost_thb ?? circuit.monthly[month]?.curfew_max_cost_thb ?? 0)
+      : (scen?.annual_cost_thb ?? circuit.annual_curfew_max_cost_thb);
   }
 
   return {
@@ -274,11 +274,12 @@ export function useZoneSavings(meta: Meta | null, month: string | null, s: Curfe
   }, [meta, month, start, end, weekendsOff, exceptions]);
 }
 
-/** A zone's projected after-hours load and remaining preventable energy under the plan (3D map, What-If mode). */
+/** A zone's projected after-hours load and the curfew saving still left (theoretical maximum minus what the plan
+ *  saves) under the plan (3D map, What-If mode). */
 export function simulatedZoneAuditMetrics(meta: Meta | null, audit: EnergyAuditZone, month: string | null, s: CurfewSettings) {
   const baseLoadKw = month ? audit.monthly[month]?.unocc_mean_kw ?? null : audit.unocc_mean_kw;
-  const baseKwh = month ? audit.monthly[month]?.surplus_kwh ?? null : audit.annual_surplus_kwh;
-  const baseCost = month ? audit.monthly[month]?.cost_thb ?? null : audit.annual_cost_thb;
+  const baseKwh = month ? audit.monthly[month]?.curfew_max_kwh ?? null : audit.annual_curfew_max_kwh;
+  const baseCost = month ? audit.monthly[month]?.curfew_max_cost_thb ?? null : audit.annual_curfew_max_cost_thb;
   const unoccHours = month ? audit.monthly[month]?.unocc_hours ?? 0 : audit.annual_unocc_hours;
 
   if (!meta) {

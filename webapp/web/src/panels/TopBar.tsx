@@ -80,7 +80,7 @@ export default function TopBar() {
           <label className="field">
             <span>Period</span>
             <select value={month ?? ""} onChange={(e) => setMonth(e.target.value || null)}>
-              <option value="">{auditView ? "Annual baseline (Jul 2018–Jun 2019)" : `All Sensor Months (${availableMonths.length || "…"})`}</option>
+              <option value="">{auditView ? "Annual (Jul 2018–Jun 2019)" : `All Sensor Months (${availableMonths.length || "…"})`}</option>
               {availableMonths.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
             </select>
           </label>

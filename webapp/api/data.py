@@ -152,24 +152,31 @@ def _energy_audit() -> list[dict]:
             for month, frame in hourly_by_month:
                 unoccupied = frame.loc[frame["Is_Unoccupied"], row.Circuit_ID]
                 observed = unoccupied.dropna()
-                if is_preventable and "_Light" in str(row.Circuit_ID):
-                    # Lights can be switched fully off after hours, so all after-hours lighting load is preventable
-                    # (matches _afterhours_timing, so a full curfew captures 100% of it).
-                    excess = observed.clip(lower=0.0)
-                elif is_preventable and c_dict:
+                # Two different measures:
+                # - WASTE (surplus_kwh): after-hours load above the dynamic P2.5 baseload, for lights and plugs.
+                #   This is what the notebook calls preventable waste (354.3 MWh/yr for the building).
+                # - CURFEW MAXIMUM (curfew_max_kwh): what a full curfew would save. A curfew switches lights fully
+                #   off, so the whole lighting load counts; plugs keep their standby baseload, so only the load
+                #   above it counts (476.2 MWh/yr, a theoretical maximum before FM exceptions).
+                if is_preventable:
                     sub_frame = frame.loc[observed.index]
-                    base_vals = [c_dict.get((d, h), float(row.Baseload_kW)) for d, h in zip(sub_frame["dow"], sub_frame["hr"])]
-                    excess = pd.Series((observed.values - np.array(base_vals)).clip(min=0.0), index=observed.index)
-                elif is_preventable:
-                    excess = (observed - float(row.Baseload_kW)).clip(lower=0)
+                    base_vals = np.array([c_dict.get((d, h), float(row.Baseload_kW))
+                                          for d, h in zip(sub_frame["dow"], sub_frame["hr"])])
+                    excess = pd.Series((observed.values - base_vals).clip(min=0.0), index=observed.index)
+                    curfew = observed.clip(lower=0.0) if "_Light" in str(row.Circuit_ID) else excess
                 else:
-                    excess = observed.iloc[0:0]
+                    excess = curfew = observed.iloc[0:0]
+                tariff = frame.loc[observed.index, "tariff_thb_per_kwh"]
                 monthly_kwh = float(excess.sum())  # each row is one hour of mean kW
-                monthly_cost = float((excess * frame.loc[excess.index, "tariff_thb_per_kwh"]).sum())
+                monthly_cost = float((excess * tariff.loc[excess.index]).sum())
+                curfew_kwh = float(curfew.sum())
+                curfew_cost = float((curfew * tariff.loc[curfew.index]).sum())
                 monthly_mean = observed.mean()
                 month_values[month] = {
                     "surplus_kwh": round(monthly_kwh, 2) if len(observed) else None,
                     "cost_thb": round(monthly_cost, 2) if len(observed) else None,
+                    "curfew_max_kwh": round(curfew_kwh, 2) if len(observed) else None,
+                    "curfew_max_cost_thb": round(curfew_cost, 2) if len(observed) else None,
                     "unocc_mean_kw": round(float(monthly_mean), 3) if pd.notna(monthly_mean) else None,
                     "unocc_hours": int(len(observed)),
                     "expected_unocc_hours": int(len(unoccupied)),
@@ -179,6 +186,8 @@ def _energy_audit() -> list[dict]:
             annual_expected_hours = sum(period["expected_unocc_hours"] for period in annual_periods)
             annual_surplus = sum(period["surplus_kwh"] or 0 for period in annual_periods)
             annual_cost = sum(period["cost_thb"] or 0 for period in annual_periods)
+            annual_curfew = sum(period["curfew_max_kwh"] or 0 for period in annual_periods)
+            annual_curfew_cost = sum(period["curfew_max_cost_thb"] or 0 for period in annual_periods)
             annual_load_kwh = sum((period["unocc_mean_kw"] or 0) * period["unocc_hours"] for period in annual_periods)
             unocc_mean = round(annual_load_kwh / annual_hours, 3) if annual_hours else 0.0
 
@@ -199,6 +208,8 @@ def _energy_audit() -> list[dict]:
                 "baseload_kw": float(row.Baseload_kW),
                 "annual_surplus_kwh": round(annual_surplus, 2),
                 "annual_cost_thb": round(annual_cost, 2),
+                "annual_curfew_max_kwh": round(annual_curfew, 2),
+                "annual_curfew_max_cost_thb": round(annual_curfew_cost, 2),
                 "monthly": month_values,
             })
         preventable = [item for item in items if item["classification"] == "Preventable Waste"]
@@ -218,6 +229,8 @@ def _energy_audit() -> list[dict]:
             monthly[month] = {
                 "surplus_kwh": round(sum(p["surplus_kwh"] or 0 for p in preventable_periods), 2) if not preventable or energy_observed else None,
                 "cost_thb": round(sum(p["cost_thb"] or 0 for p in preventable_periods), 2) if not preventable or energy_observed else None,
+                "curfew_max_kwh": round(sum(p["curfew_max_kwh"] or 0 for p in preventable_periods), 2) if not preventable or energy_observed else None,
+                "curfew_max_cost_thb": round(sum(p["curfew_max_cost_thb"] or 0 for p in preventable_periods), 2) if not preventable or energy_observed else None,
                 "unocc_mean_kw": round(load, 3) if load is not None else None,
                 "unocc_hours": total_observed,
                 "expected_unocc_hours": total_expected,
@@ -232,6 +245,8 @@ def _energy_audit() -> list[dict]:
             "critical_count": len(critical),
             "annual_surplus_kwh": round(sum(item["annual_surplus_kwh"] for item in preventable), 2),
             "annual_cost_thb": round(sum(item["annual_cost_thb"] for item in preventable), 2),
+            "annual_curfew_max_kwh": round(sum(item["annual_curfew_max_kwh"] for item in preventable), 2),
+            "annual_curfew_max_cost_thb": round(sum(item["annual_curfew_max_cost_thb"] for item in preventable), 2),
             "unocc_mean_kw": round(sum(item["unocc_mean_kw"] or 0 for item in items), 3) if any(item["unocc_mean_kw"] is not None for item in items) else None,
             "annual_unocc_hours": sum(item["annual_unocc_hours"] for item in items),
             "annual_expected_unocc_hours": sum(item["annual_expected_unocc_hours"] for item in items),
@@ -274,13 +289,14 @@ def _afterhours_timing() -> dict[str, list[dict]]:
         observed = hourly[column].to_numpy(dtype=float)
         # Savings are computed for every circuit, including Critical Standby ones: those only count when the
         # FM gives that circuit its own curfew (see the scope loop below and getCircuitPlanInfo in plan.ts).
+        # CURFEW SAVING (not waste): this is what a curfew would save, so its full default curfew equals the
+        # theoretical maximum (476.2 MWh/yr). Waste above the baseload (354.3 MWh/yr) is in the energy audit.
         if "_Light" in column:
-            # A lighting curfew switches the lights off, so the whole load in curfew hours is saved,
-            # not only the part above the P2.5 baseline (for lights on every night, that baseline is well above 0).
+            # A lighting curfew switches the lights off, so the whole load in curfew hours is saved.
             excess = np.where(np.isfinite(observed), np.maximum(observed, 0), 0)
         else:
-            # Plug circuits keep their P2.5 standby floor (e.g. fridges or network equipment that must stay
-            # powered), so only the load above that floor counts as saved.
+            # Plug circuits keep their P2.5 standby baseload (e.g. fridges or network equipment that must stay
+            # powered), so only the load above it counts as saved.
             bases = np.array([dynamic.get(column, {}).get((int(d), int(h)), float(row.Baseload_kW))
                               for d, h in zip(hourly["dow"], hours)])
             excess = np.where(np.isfinite(observed), np.maximum(observed - bases, 0), 0)

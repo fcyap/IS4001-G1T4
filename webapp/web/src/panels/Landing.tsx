@@ -41,7 +41,7 @@ export default function Landing() {
         <UseCase topic="afterhours" label="After hours"
           value={meta ? `${wasteful} of ${audits.length}` : "…"}
           line="zones still draw load they don't need outside office hours."
-          detail={meta ? `${kwh(wasteKwh)} and ${n0(wasteThb)} THB over Jul 2018–Jun 2019.` : ""}
+          detail={meta ? `${kwh(wasteKwh)} wasted above baseload (${n0(wasteThb)} THB) over Jul 2018–Jun 2019.` : ""}
           action="Next step: put those circuits on a BEMS curfew." />
         <UseCase topic="comfort" label="Cooling"
           value={tooCool === null ? "…" : `${n0(tooCool)} %`}
